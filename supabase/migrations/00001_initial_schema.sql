@@ -183,6 +183,7 @@ ALTER TABLE public.activity_events ENABLE ROW LEVEL SECURITY;
 -- 12. RLS Policies
 
 -- Profiles
+DROP POLICY IF EXISTS "Users can view own profile or org member profiles" ON public.profiles;
 CREATE POLICY "Users can view own profile or org member profiles"
 ON public.profiles FOR SELECT
 USING (
@@ -194,20 +195,24 @@ USING (
   )
 );
 
+DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 CREATE POLICY "Users can update own profile"
 ON public.profiles FOR UPDATE
 USING (id = auth.uid())
 WITH CHECK (id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
 CREATE POLICY "Users can insert own profile"
 ON public.profiles FOR INSERT
 WITH CHECK (id = auth.uid());
 
 -- Organizations
+DROP POLICY IF EXISTS "Members can view their organizations" ON public.organizations;
 CREATE POLICY "Members can view their organizations"
 ON public.organizations FOR SELECT
 USING (public.is_org_member(id));
 
+DROP POLICY IF EXISTS "Owners and admins can update their organization" ON public.organizations;
 CREATE POLICY "Owners and admins can update their organization"
 ON public.organizations FOR UPDATE
 USING (
@@ -219,15 +224,18 @@ WITH CHECK (
   public.get_user_role(id) IN ('owner', 'admin')
 );
 
+DROP POLICY IF EXISTS "Authenticated users can create organizations" ON public.organizations;
 CREATE POLICY "Authenticated users can create organizations"
 ON public.organizations FOR INSERT
 WITH CHECK (auth.uid() IS NOT NULL);
 
 -- Organization Members
+DROP POLICY IF EXISTS "Members can view members in their organizations" ON public.organization_members;
 CREATE POLICY "Members can view members in their organizations"
 ON public.organization_members FOR SELECT
 USING (public.is_org_member(organization_id));
 
+DROP POLICY IF EXISTS "Owners and admins can manage organization members" ON public.organization_members;
 CREATE POLICY "Owners and admins can manage organization members"
 ON public.organization_members FOR ALL
 USING (
@@ -239,6 +247,7 @@ WITH CHECK (
   public.get_user_role(organization_id) IN ('owner', 'admin')
 );
 
+DROP POLICY IF EXISTS "First member (creator) can add themselves as owner" ON public.organization_members;
 CREATE POLICY "First member (creator) can add themselves as owner"
 ON public.organization_members FOR INSERT
 WITH CHECK (
@@ -246,10 +255,12 @@ WITH CHECK (
 );
 
 -- Projects
+DROP POLICY IF EXISTS "Members can view organization projects" ON public.projects;
 CREATE POLICY "Members can view organization projects"
 ON public.projects FOR SELECT
 USING (public.is_org_member(organization_id));
 
+DROP POLICY IF EXISTS "Owners, admins, and managers can manage projects" ON public.projects;
 CREATE POLICY "Owners, admins, and managers can manage projects"
 ON public.projects FOR ALL
 USING (
@@ -262,6 +273,7 @@ WITH CHECK (
 );
 
 -- Work Sessions
+DROP POLICY IF EXISTS "Members can view their own sessions or managers/admins can view org sessions" ON public.work_sessions;
 CREATE POLICY "Members can view their own sessions or managers/admins can view org sessions"
 ON public.work_sessions FOR SELECT
 USING (
@@ -271,6 +283,7 @@ USING (
   )
 );
 
+DROP POLICY IF EXISTS "Users can insert their own work sessions in member orgs" ON public.work_sessions;
 CREATE POLICY "Users can insert their own work sessions in member orgs"
 ON public.work_sessions FOR INSERT
 WITH CHECK (
@@ -278,6 +291,7 @@ WITH CHECK (
   user_id = auth.uid()
 );
 
+DROP POLICY IF EXISTS "Users can update their own work sessions or managers can update" ON public.work_sessions;
 CREATE POLICY "Users can update their own work sessions or managers can update"
 ON public.work_sessions FOR UPDATE
 USING (
@@ -294,6 +308,7 @@ WITH CHECK (
 );
 
 -- Time Entries
+DROP POLICY IF EXISTS "Members can view own entries or managers/admins can view org entries" ON public.time_entries;
 CREATE POLICY "Members can view own entries or managers/admins can view org entries"
 ON public.time_entries FOR SELECT
 USING (
@@ -303,6 +318,7 @@ USING (
   )
 );
 
+DROP POLICY IF EXISTS "Users can create their own time entries" ON public.time_entries;
 CREATE POLICY "Users can create their own time entries"
 ON public.time_entries FOR INSERT
 WITH CHECK (
@@ -310,6 +326,7 @@ WITH CHECK (
   user_id = auth.uid()
 );
 
+DROP POLICY IF EXISTS "Users can update own entries or managers can approve/update" ON public.time_entries;
 CREATE POLICY "Users can update own entries or managers can approve/update"
 ON public.time_entries FOR UPDATE
 USING (
@@ -326,6 +343,7 @@ WITH CHECK (
 );
 
 -- Activity Events
+DROP POLICY IF EXISTS "Members can view their own activity or managers/admins can view org activity" ON public.activity_events;
 CREATE POLICY "Members can view their own activity or managers/admins can view org activity"
 ON public.activity_events FOR SELECT
 USING (
@@ -335,6 +353,7 @@ USING (
   )
 );
 
+DROP POLICY IF EXISTS "Users can insert their own activity events" ON public.activity_events;
 CREATE POLICY "Users can insert their own activity events"
 ON public.activity_events FOR INSERT
 WITH CHECK (
