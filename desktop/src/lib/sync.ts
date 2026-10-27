@@ -49,7 +49,6 @@ export async function syncEvents(config: SyncConfig): Promise<SyncResult> {
     }
 
     const data = await res.json()
-    // Remove successfully processed events from buffer
     const syncedKeys = events.map((e) => e.idempotency_key)
     clearSyncedEvents(syncedKeys)
 

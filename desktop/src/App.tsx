@@ -1,212 +1,286 @@
-import { useState, useEffect } from 'react'
-import { enqueueEvent, getQueuedEvents, clearAllQueuedEvents } from './lib/queue'
-import { syncEvents, type SyncConfig } from './lib/sync'
-import './App.css'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import {
+  enqueueEvent,
+  getQueuedEvents,
+  clearAllQueuedEvents,
+} from './lib/queue'
+import { syncEvents } from './lib/sync'
+import {
+  saveSession,
+  loadSession,
+  clearSession,
+  clockInApi,
+  logBreakApi,
+  clockOutApi,
+} from './lib/session'
+import { useActivityMonitor } from './lib/useActivityMonitor'
+import './index.css'
+
+type AttendanceStatus = 'clocked-out' | 'clocked-in' | 'on-break'
+
+const SERVER_URL = 'http://localhost:3000'
+
+function formatDuration(seconds: number) {
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = seconds % 60
+  return [h, m, s].map((v) => String(v).padStart(2, '0')).join(':')
+}
 
 export default function App() {
-  const [config, setConfig] = useState<SyncConfig>({
-    serverUrl: 'http://localhost:3000',
-    sessionId: '',
-    organizationId: '',
-    authToken: '',
-  })
+  const [status, setStatus] = useState<AttendanceStatus>('clocked-out')
+  const [sessionId, setSessionId] = useState('')
+  const [organizationId, setOrganizationId] = useState('')
+  const [clockInTime, setClockInTime] = useState<Date | null>(null)
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [queueCount, setQueueCount] = useState(0)
-  const [isTracking, setIsTracking] = useState(false)
-  const [lastActivity, setLastActivity] = useState<string>('None')
-  const [syncStatus, setSyncStatus] = useState<string>('Idle')
+  const [syncStatus, setSyncStatus] = useState('Idle')
   const [isSyncing, setIsSyncing] = useState(false)
+  const [isIdle, setIsIdle] = useState(false)
+  const [lastWindow, setLastWindow] = useState('—')
+  const [statusMessage, setStatusMessage] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const clockInTimeRef = useRef<Date | null>(null)
 
-  // Update queued count display
-  const refreshQueueCount = () => {
-    setQueueCount(getQueuedEvents().length)
-  }
-
+  // Restore persisted session on mount
   useEffect(() => {
+    const saved = loadSession()
+    if (saved) {
+      setSessionId(saved.sessionId)
+      setOrganizationId(saved.organizationId)
+      // Mark as clocked in; we don't know start time across sessions
+      setStatus('clocked-in')
+      setSyncStatus('Session restored')
+    }
     refreshQueueCount()
   }, [])
 
-  // Automated 30-second sync loop
+  // Timer
   useEffect(() => {
-    const syncInterval = setInterval(async () => {
-      if (getQueuedEvents().length > 0 && config.sessionId && config.organizationId) {
-        setSyncStatus('Auto-syncing...')
-        const res = await syncEvents(config)
-        setSyncStatus(res.message || (res.success ? 'Synced' : 'Failed'))
-        refreshQueueCount()
-      }
-    }, 30000)
+    if (status !== 'clocked-in') return
+    if (!clockInTime) return
+    clockInTimeRef.current = clockInTime
+    const interval = setInterval(() => {
+      const now = Date.now()
+      setElapsedSeconds(Math.floor((now - clockInTimeRef.current!.getTime()) / 1000))
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [status, clockInTime])
 
-    return () => clearInterval(syncInterval)
-  }, [config])
-
-  // Periodic activity tick generator when tracking is active
+  // Auto-sync every 30 seconds
   useEffect(() => {
-    if (!isTracking) return
-    const tickInterval = setInterval(() => {
-      enqueueEvent(true, { source: 'auto_tick', app: 'Desktop Agent' })
-      setLastActivity(`Active Tick at ${new Date().toLocaleTimeString()}`)
+    if (!sessionId || !organizationId) return
+    const interval = setInterval(async () => {
+      if (getQueuedEvents().length === 0) return
+      setSyncStatus('Auto-syncing…')
+      const res = await syncEvents({ serverUrl: SERVER_URL, sessionId, organizationId, authToken: '' })
+      setSyncStatus(res.success ? `Synced at ${new Date().toLocaleTimeString()}` : 'Sync failed')
       refreshQueueCount()
-    }, 10000)
+    }, 30_000)
+    return () => clearInterval(interval)
+  }, [sessionId, organizationId])
 
-    return () => clearInterval(tickInterval)
-  }, [isTracking])
+  const refreshQueueCount = useCallback(() => {
+    setQueueCount(getQueuedEvents().length)
+  }, [])
 
-  const handleSimulateTick = (isActive: boolean) => {
-    enqueueEvent(isActive, { source: 'manual_simulation' })
-    setLastActivity(`${isActive ? 'Active' : 'Idle'} at ${new Date().toLocaleTimeString()}`)
+  const handleTick = useCallback(() => {
+    refreshQueueCount()
+  }, [refreshQueueCount])
+
+  const handleIdleChange = useCallback((idle: boolean) => {
+    setIsIdle(idle)
+  }, [])
+
+  const handleWindowChange = useCallback((title: string) => {
+    setLastWindow(title)
+  }, [])
+
+  // Activity monitor — only active while clocked in and not on break
+  useActivityMonitor({
+    enabled: status === 'clocked-in',
+    onTick: handleTick,
+    onIdleChange: handleIdleChange,
+    onWindowChange: handleWindowChange,
+  })
+
+  async function handleClockIn() {
+    setIsLoading(true)
+    setStatusMessage('')
+    const res = await clockInApi(SERVER_URL)
+    setIsLoading(false)
+    if (res.error) {
+      setStatusMessage(res.error)
+      return
+    }
+    const now = new Date()
+    setSessionId(res.sessionId)
+    setOrganizationId(res.organizationId)
+    saveSession({ sessionId: res.sessionId, organizationId: res.organizationId })
+    setClockInTime(now)
+    setElapsedSeconds(0)
+    setStatus('clocked-in')
+    setSyncStatus('Session started')
+    // Emit attendance event
+    enqueueEvent(true, 'active_tick', { window_title: 'Clock In', app_name: 'TrackMe Desktop' })
     refreshQueueCount()
   }
 
-  const handleManualSync = async () => {
+  async function handleStartBreak() {
+    setIsLoading(true)
+    const res = await logBreakApi(SERVER_URL, sessionId, organizationId, 'break_start')
+    setIsLoading(false)
+    if (res.error) { setStatusMessage(res.error); return }
+    enqueueEvent(false, 'break_start')
+    setStatus('on-break')
+    refreshQueueCount()
+  }
+
+  async function handleEndBreak() {
+    setIsLoading(true)
+    const res = await logBreakApi(SERVER_URL, sessionId, organizationId, 'break_end')
+    setIsLoading(false)
+    if (res.error) { setStatusMessage(res.error); return }
+    enqueueEvent(true, 'break_end')
+    setStatus('clocked-in')
+    refreshQueueCount()
+  }
+
+  async function handleClockOut() {
+    setIsLoading(true)
+    setStatusMessage('')
+
+    // Flush queue first, then clock out
+    if (getQueuedEvents().length > 0 && sessionId && organizationId) {
+      await syncEvents({ serverUrl: SERVER_URL, sessionId, organizationId, authToken: '' })
+    }
+
+    const res = await clockOutApi(SERVER_URL, sessionId)
+    setIsLoading(false)
+    if (res.error) { setStatusMessage(res.error); return }
+
+    clearSession()
+    clearAllQueuedEvents()
+    setStatus('clocked-out')
+    setSessionId('')
+    setOrganizationId('')
+    setClockInTime(null)
+    setElapsedSeconds(0)
+    setQueueCount(0)
+    setSyncStatus('Idle')
+    setIsIdle(false)
+  }
+
+  async function handleManualSync() {
+    if (!sessionId || !organizationId) { setStatusMessage('No active session'); return }
     setIsSyncing(true)
-    setSyncStatus('Syncing...')
-    const res = await syncEvents(config)
-    setSyncStatus(res.message || (res.success ? `Synced ${res.count} events` : 'Failed'))
+    setSyncStatus('Syncing…')
+    const res = await syncEvents({ serverUrl: SERVER_URL, sessionId, organizationId, authToken: '' })
+    setSyncStatus(res.message || (res.success ? 'Synced' : 'Failed'))
     setIsSyncing(false)
     refreshQueueCount()
   }
 
-  const handleClearQueue = () => {
-    clearAllQueuedEvents()
-    refreshQueueCount()
-    setSyncStatus('Queue cleared')
-  }
+  const statusColor = {
+    'clocked-out': '#9ca3af',
+    'clocked-in': '#22c55e',
+    'on-break': '#f59e0b',
+  }[status]
+
+  const statusLabel = {
+    'clocked-out': 'Off Duty',
+    'clocked-in': isIdle ? 'Idle' : 'Working',
+    'on-break': 'On Break',
+  }[status]
 
   return (
-    <div style={{ fontFamily: 'system-ui, sans-serif', maxWidth: 640, margin: '2rem auto', padding: '1.5rem', border: '1px solid #e5e7eb', borderRadius: '12px' }}>
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-        <div>
-          <h2 style={{ margin: 0, fontSize: '1.25rem' }}>TrackMe Desktop Agent</h2>
-          <p style={{ margin: 0, fontSize: '0.85rem', color: '#6b7280' }}>Local Offline Activity Sync Engine</p>
+    <div className="agent-shell">
+      {/* Header */}
+      <header className="agent-header">
+        <div className="brand">
+          <div className="brand-mark">T</div>
+          <span className="brand-name">TrackMe</span>
         </div>
-        <span style={{
-          padding: '4px 10px',
-          borderRadius: '999px',
-          fontSize: '0.75rem',
-          fontWeight: 600,
-          background: isTracking ? '#dcfce7' : '#f3f4f6',
-          color: isTracking ? '#15803d' : '#6b7280'
-        }}>
-          {isTracking ? 'TRACKING ACTIVE' : 'STOPPED'}
-        </span>
+        <div className="status-pill" style={{ background: `${statusColor}18`, color: statusColor, border: `1px solid ${statusColor}40` }}>
+          <span className="status-dot" style={{ background: statusColor }} />
+          {statusLabel}
+        </div>
       </header>
 
-      {/* Configuration Form */}
-      <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.5rem' }}>
-        <div>
-          <label style={{ fontSize: '0.75rem', fontWeight: 600, display: 'block', marginBottom: '4px' }}>Server URL</label>
-          <input
-            style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', border: '1px solid #d1d5db', boxSizing: 'border-box' }}
-            value={config.serverUrl}
-            onChange={(e) => setConfig({ ...config, serverUrl: e.target.value })}
-          />
-        </div>
-        <div>
-          <label style={{ fontSize: '0.75rem', fontWeight: 600, display: 'block', marginBottom: '4px' }}>Session ID</label>
-          <input
-            style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', border: '1px solid #d1d5db', boxSizing: 'border-box' }}
-            placeholder="Work Session UUID"
-            value={config.sessionId}
-            onChange={(e) => setConfig({ ...config, sessionId: e.target.value })}
-          />
-        </div>
-        <div>
-          <label style={{ fontSize: '0.75rem', fontWeight: 600, display: 'block', marginBottom: '4px' }}>Organization ID</label>
-          <input
-            style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', border: '1px solid #d1d5db', boxSizing: 'border-box' }}
-            placeholder="Organization UUID"
-            value={config.organizationId}
-            onChange={(e) => setConfig({ ...config, organizationId: e.target.value })}
-          />
-        </div>
-        <div>
-          <label style={{ fontSize: '0.75rem', fontWeight: 600, display: 'block', marginBottom: '4px' }}>Auth Token (Optional)</label>
-          <input
-            style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', border: '1px solid #d1d5db', boxSizing: 'border-box' }}
-            placeholder="Bearer token if external"
-            type="password"
-            value={config.authToken}
-            onChange={(e) => setConfig({ ...config, authToken: e.target.value })}
-          />
-        </div>
-      </section>
+      {/* Timer */}
+      <div className="timer-block">
+        <div className="timer-label">Session Duration</div>
+        <div className="timer-display">{formatDuration(elapsedSeconds)}</div>
+        {lastWindow !== '—' && status === 'clocked-in' && !isIdle && (
+          <div className="timer-window" title={lastWindow}>{lastWindow}</div>
+        )}
+      </div>
 
-      {/* Queue & Status Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem', marginBottom: '1.5rem' }}>
-        <div style={{ background: '#f9fafb', padding: '12px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
-          <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>Queued Events</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '4px' }}>{queueCount}</div>
+      {/* Status cards */}
+      <div className="stats-row">
+        <div className="stat-card">
+          <div className="stat-label">Queued</div>
+          <div className="stat-value">{queueCount}</div>
         </div>
-        <div style={{ background: '#f9fafb', padding: '12px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
-          <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>Last Activity</div>
-          <div style={{ fontSize: '0.85rem', fontWeight: 500, marginTop: '8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {lastActivity}
-          </div>
+        <div className="stat-card">
+          <div className="stat-label">Sync</div>
+          <div className="stat-value-sm">{syncStatus}</div>
         </div>
-        <div style={{ background: '#f9fafb', padding: '12px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
-          <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>Sync Status</div>
-          <div style={{ fontSize: '0.85rem', fontWeight: 500, marginTop: '8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {syncStatus}
-          </div>
+        <div className="stat-card">
+          <div className="stat-label">Activity</div>
+          <div className="stat-value-sm">{isIdle ? 'Idle 5m+' : status === 'on-break' ? 'Paused' : status === 'clocked-in' ? 'Live' : '—'}</div>
         </div>
       </div>
 
-      {/* Action Buttons */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-        <button
-          onClick={() => setIsTracking(!isTracking)}
-          style={{
-            padding: '10px',
-            background: isTracking ? '#dc2626' : '#2563eb',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '6px',
-            fontWeight: 600,
-            cursor: 'pointer',
-          }}
-        >
-          {isTracking ? 'Stop Tracking Engine' : 'Start Tracking Engine'}
-        </button>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-          <button
-            onClick={() => handleSimulateTick(true)}
-            style={{ padding: '8px', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer' }}
-          >
-            + Active Tick
+      {/* Action area */}
+      <div className="actions">
+        {status === 'clocked-out' && (
+          <button id="btn-clock-in" className="btn-primary" onClick={handleClockIn} disabled={isLoading}>
+            {isLoading ? 'Connecting…' : 'Clock In'}
           </button>
-          <button
-            onClick={() => handleSimulateTick(false)}
-            style={{ padding: '8px', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer' }}
-          >
-            + Idle Tick
-          </button>
-        </div>
+        )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.5rem' }}>
+        {status === 'clocked-in' && (
+          <>
+            <button id="btn-start-break" className="btn-secondary" onClick={handleStartBreak} disabled={isLoading}>
+              Start Break
+            </button>
+            <button id="btn-clock-out" className="btn-destructive" onClick={handleClockOut} disabled={isLoading}>
+              {isLoading ? 'Clocking out…' : 'Clock Out'}
+            </button>
+          </>
+        )}
+
+        {status === 'on-break' && (
+          <>
+            <button id="btn-end-break" className="btn-primary" onClick={handleEndBreak} disabled={isLoading}>
+              End Break
+            </button>
+            <button id="btn-clock-out-break" className="btn-destructive" onClick={handleClockOut} disabled={isLoading}>
+              Clock Out
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Manual sync */}
+      {status !== 'clocked-out' && (
+        <div className="sync-row">
           <button
+            id="btn-sync"
+            className="btn-ghost"
             onClick={handleManualSync}
             disabled={isSyncing || queueCount === 0}
-            style={{
-              padding: '8px',
-              background: '#0f172a',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: isSyncing || queueCount === 0 ? 'not-allowed' : 'pointer',
-              opacity: isSyncing || queueCount === 0 ? 0.6 : 1,
-            }}
           >
-            {isSyncing ? 'Syncing...' : 'Sync Now'}
-          </button>
-          <button
-            onClick={handleClearQueue}
-            style={{ padding: '8px', background: '#fff', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer' }}
-          >
-            Clear Queue
+            {isSyncing ? 'Syncing…' : `Sync Now (${queueCount})`}
           </button>
         </div>
-      </div>
+      )}
+
+      {/* Error / status message */}
+      {statusMessage && (
+        <div className="error-banner">{statusMessage}</div>
+      )}
     </div>
   )
 }

@@ -5,6 +5,9 @@ interface IngestionEvent {
   idempotency_key: string
   timestamp: string
   is_active: boolean
+  event_type?: string
+  window_title?: string
+  app_name?: string
   payload?: Record<string, unknown>
 }
 
@@ -18,7 +21,6 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
 
-    // 1. Authenticate request
     const {
       data: { user },
       error: authError,
@@ -42,18 +44,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'No events to sync', count: 0 })
     }
 
-    // 2. Prepare records
     const records = events.map((event) => ({
       organization_id,
       session_id,
       user_id: user.id,
       idempotency_key: event.idempotency_key,
-      event_type: event.is_active ? 'active_tick' : 'idle_tick',
-      payload: event.payload || { is_active: event.is_active },
+      event_type: event.event_type ?? (event.is_active ? 'active_tick' : 'idle_tick'),
+      window_title: event.window_title ?? null,
+      app_name: event.app_name ?? null,
+      payload: event.payload ?? { is_active: event.is_active },
       recorded_at: event.timestamp || new Date().toISOString(),
     }))
 
-    // 3. Batch insert with idempotency deduplication
     const { data, error } = await supabase
       .from('activity_events')
       .upsert(records, { onConflict: 'idempotency_key', ignoreDuplicates: true })

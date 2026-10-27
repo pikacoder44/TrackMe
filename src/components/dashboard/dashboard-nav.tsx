@@ -23,6 +23,7 @@ export function DashboardNav({ userRole }: DashboardNavProps) {
 
   if (userRole && ['owner', 'admin', 'manager'].includes(userRole)) {
     links.push({ href: '/dashboard/approvals', label: 'Approvals' })
+    links.push({ href: '/dashboard/manager', label: 'Team Monitor' })
   }
 
   return (
