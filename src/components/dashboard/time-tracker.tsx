@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useTransition } from 'react'
+import { useState, useEffect, useTransition, useOptimistic } from 'react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -35,21 +35,27 @@ export function TimeTracker({
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
 
-  // Timer calculation
+  // React 19 optimistic session state bound to the activeSession prop
+  const [currentSession, setOptimisticSession] = useOptimistic(
+    activeSession,
+    (_current, update: ActiveSession | null) => update
+  )
+
+  // Timer calculation based on currentSession
   useEffect(() => {
-    if (!activeSession) {
+    if (!currentSession) {
       const timer = setTimeout(() => setElapsedSeconds(0), 0)
       return () => clearTimeout(timer)
     }
 
-    const startTime = new Date(activeSession.started_at).getTime()
+    const startTime = new Date(currentSession.started_at).getTime()
     const update = () => {
       const now = new Date().getTime()
       setElapsedSeconds(Math.max(0, Math.floor((now - startTime) / 1000)))
     }
 
     const timer = setTimeout(update, 0)
-    if (activeSession.status === 'active') {
+    if (currentSession.status === 'active') {
       const interval = setInterval(update, 1000)
       return () => {
         clearTimeout(timer)
@@ -57,7 +63,7 @@ export function TimeTracker({
       }
     }
     return () => clearTimeout(timer)
-  }, [activeSession])
+  }, [currentSession])
 
   function formatTime(totalSeconds: number) {
     const hours = Math.floor(totalSeconds / 3600)
@@ -71,39 +77,73 @@ export function TimeTracker({
   function handleClockIn(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError(null)
-    const formData = new FormData(event.currentTarget)
+    const formElement = event.currentTarget
+    const formData = new FormData(formElement)
     formData.append('organizationId', organizationId)
 
+    const projectId = (formData.get('projectId') as string) || null
+    const notes = (formData.get('notes') as string) || null
+
+    // Optimistically create active session state immediately
+    const tempSession: ActiveSession = {
+      id: 'temp-session',
+      status: 'active',
+      started_at: new Date().toISOString(),
+      project_id: projectId,
+      notes,
+      organization_id: organizationId,
+    }
+    setElapsedSeconds(0)
+
     startTransition(async () => {
+      setOptimisticSession(tempSession)
       const res = await clockIn(formData)
-      if (res?.error) setError(res.error)
+      if (res?.error) {
+        setError(res.error)
+      }
     })
   }
 
   function handlePause() {
-    if (!activeSession) return
+    if (!currentSession) return
     setError(null)
+    const prev = currentSession
+
     startTransition(async () => {
-      const res = await pauseSession(activeSession.id)
-      if (res?.error) setError(res.error)
+      setOptimisticSession({ ...prev, status: 'paused' })
+      const res = await pauseSession(prev.id)
+      if (res?.error) {
+        setError(res.error)
+      }
     })
   }
 
   function handleResume() {
-    if (!activeSession) return
+    if (!currentSession) return
     setError(null)
+    const prev = currentSession
+
     startTransition(async () => {
-      const res = await resumeSession(activeSession.id)
-      if (res?.error) setError(res.error)
+      setOptimisticSession({ ...prev, status: 'active' })
+      const res = await resumeSession(prev.id)
+      if (res?.error) {
+        setError(res.error)
+      }
     })
   }
 
   function handleClockOut() {
-    if (!activeSession) return
+    if (!currentSession) return
     setError(null)
+    const prev = currentSession
+    setElapsedSeconds(0)
+
     startTransition(async () => {
-      const res = await clockOut(activeSession.id)
-      if (res?.error) setError(res.error)
+      setOptimisticSession(null)
+      const res = await clockOut(prev.id)
+      if (res?.error) {
+        setError(res.error)
+      }
     })
   }
 
@@ -115,15 +155,15 @@ export function TimeTracker({
             <CardTitle className="text-lg">Work Session Tracker</CardTitle>
             <CardDescription>Track time and log sessions directly into your organization</CardDescription>
           </div>
-          {activeSession && (
+          {currentSession && (
             <span
               className={`text-xs uppercase font-semibold px-2.5 py-1 rounded-full ${
-                activeSession.status === 'active'
+                currentSession.status === 'active'
                   ? 'bg-emerald-500/10 text-emerald-600'
                   : 'bg-amber-500/10 text-amber-600'
               }`}
             >
-              {activeSession.status}
+              {currentSession.status}
             </span>
           )}
         </div>
@@ -146,9 +186,9 @@ export function TimeTracker({
         </div>
 
         {/* Action Controls */}
-        {activeSession ? (
+        {currentSession ? (
           <div className="flex items-center gap-3">
-            {activeSession.status === 'active' ? (
+            {currentSession.status === 'active' ? (
               <Button
                 variant="outline"
                 className="flex-1"
