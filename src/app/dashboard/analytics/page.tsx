@@ -34,33 +34,35 @@ export default async function AnalyticsPage() {
     )
   }
 
-  // 1. Fetch organization time entries with project info
-  const { data: timeEntries } = await supabase
-    .from('time_entries')
-    .select(`
-      id,
-      started_at,
-      ended_at,
-      duration_seconds,
-      approval_status,
-      description,
-      user_id,
-      project:projects(name)
-    `)
-    .eq('organization_id', orgId)
+  // Execute all independent org metrics queries concurrently
+  const [timeEntriesResult, pendingResult, membersResult] = await Promise.all([
+    supabase
+      .from('time_entries')
+      .select(`
+        id,
+        started_at,
+        ended_at,
+        duration_seconds,
+        approval_status,
+        description,
+        user_id,
+        project:projects(name)
+      `)
+      .eq('organization_id', orgId),
+    supabase
+      .from('time_entries')
+      .select('*', { count: 'exact', head: true })
+      .eq('organization_id', orgId)
+      .eq('approval_status', 'pending'),
+    supabase
+      .from('organization_members')
+      .select('*', { count: 'exact', head: true })
+      .eq('organization_id', orgId),
+  ])
 
-  // 2. Fetch pending approvals count
-  const { count: pendingCount } = await supabase
-    .from('time_entries')
-    .select('*', { count: 'exact', head: true })
-    .eq('organization_id', orgId)
-    .eq('approval_status', 'pending')
-
-  // 3. Fetch active members count
-  const { count: memberCount } = await supabase
-    .from('organization_members')
-    .select('*', { count: 'exact', head: true })
-    .eq('organization_id', orgId)
+  const timeEntries = timeEntriesResult.data
+  const pendingCount = pendingResult.count
+  const memberCount = membersResult.count
 
   // Calculate Aggregates
   const entries = timeEntries || []

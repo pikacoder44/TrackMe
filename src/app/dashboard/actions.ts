@@ -32,7 +32,7 @@ export async function clockIn(formData: FormData) {
   })
 
   if (error) return { error: error.message }
-  revalidatePath('/dashboard')
+  revalidatePath('/dashboard', 'page')
   return { success: true }
 }
 
@@ -46,7 +46,7 @@ export async function pauseSession(sessionId: string) {
     .eq('user_id', user.id)
 
   if (error) return { error: error.message }
-  revalidatePath('/dashboard')
+  revalidatePath('/dashboard', 'page')
   return { success: true }
 }
 
@@ -60,56 +60,58 @@ export async function resumeSession(sessionId: string) {
     .eq('user_id', user.id)
 
   if (error) return { error: error.message }
-  revalidatePath('/dashboard')
+  revalidatePath('/dashboard', 'page')
   return { success: true }
 }
 
 export async function clockOut(sessionId: string) {
   const { supabase, user } = await getAuthenticatedUser()
   const now = new Date()
+  const nowIso = now.toISOString()
 
   // 1. Fetch the session details to compute duration for time entry
   const { data: session, error: fetchError } = await supabase
     .from('work_sessions')
-    .select('*')
+    .select('id, organization_id, project_id, started_at, notes')
     .eq('id', sessionId)
     .eq('user_id', user.id)
     .single()
 
   if (fetchError || !session) return { error: fetchError?.message || 'Session not found' }
 
-  // 2. Mark work session completed
-  const { error: sessionError } = await supabase
-    .from('work_sessions')
-    .update({
-      status: 'completed',
-      ended_at: now.toISOString(),
-      updated_at: now.toISOString(),
-    })
-    .eq('id', sessionId)
-    .eq('user_id', user.id)
-
-  if (sessionError) return { error: sessionError.message }
-
-  // 3. Create corresponding time_entries record
   const startMs = new Date(session.started_at).getTime()
   const durationSeconds = Math.max(0, Math.floor((now.getTime() - startMs) / 1000))
 
-  await supabase.from('time_entries').insert({
-    organization_id: session.organization_id,
-    session_id: session.id,
-    user_id: user.id,
-    project_id: session.project_id,
-    entry_type: 'automatic',
-    approval_status: 'pending',
-    started_at: session.started_at,
-    ended_at: now.toISOString(),
-    duration_seconds: durationSeconds,
-    description: session.notes,
-  })
+  // 2. Concurrently update session and insert time entry
+  const [sessionUpdateResult, timeEntryInsertResult] = await Promise.all([
+    supabase
+      .from('work_sessions')
+      .update({
+        status: 'completed',
+        ended_at: nowIso,
+        updated_at: nowIso,
+      })
+      .eq('id', sessionId)
+      .eq('user_id', user.id),
+    supabase.from('time_entries').insert({
+      organization_id: session.organization_id,
+      session_id: session.id,
+      user_id: user.id,
+      project_id: session.project_id,
+      entry_type: 'automatic',
+      approval_status: 'pending',
+      started_at: session.started_at,
+      ended_at: nowIso,
+      duration_seconds: durationSeconds,
+      description: session.notes,
+    }),
+  ])
 
-  revalidatePath('/dashboard')
-  revalidatePath('/dashboard/timesheets')
+  if (sessionUpdateResult.error) return { error: sessionUpdateResult.error.message }
+  if (timeEntryInsertResult.error) return { error: timeEntryInsertResult.error.message }
+
+  revalidatePath('/dashboard', 'page')
+  revalidatePath('/dashboard/timesheets', 'page')
   return { success: true }
 }
 
@@ -142,6 +144,6 @@ export async function logManualTimeEntry(formData: FormData) {
   })
 
   if (error) return { error: error.message }
-  revalidatePath('/dashboard/timesheets')
+  revalidatePath('/dashboard/timesheets', 'page')
   return { success: true }
 }

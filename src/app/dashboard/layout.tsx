@@ -1,8 +1,8 @@
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { logout } from '@/app/auth/actions'
 import { Button } from '@/components/ui/button'
+import { DashboardNav } from '@/components/dashboard/dashboard-nav'
 
 interface MembershipWithOrg {
   role: 'owner' | 'admin' | 'manager' | 'employee'
@@ -27,18 +27,21 @@ export default async function DashboardLayout({
     redirect('/login')
   }
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('full_name, email')
-    .eq('id', user.id)
-    .single()
+  // Fetch profile and organization memberships concurrently
+  const [profileResult, membershipsResult] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('full_name, email')
+      .eq('id', user.id)
+      .maybeSingle(),
+    supabase
+      .from('organization_members')
+      .select('role, organization:organizations(id, name)')
+      .eq('user_id', user.id),
+  ])
 
-  const { data: memberships } = await supabase
-    .from('organization_members')
-    .select('role, organization:organizations(id, name)')
-    .eq('user_id', user.id)
-
-  const typedMemberships = (memberships as unknown as MembershipWithOrg[]) || []
+  const profile = profileResult.data
+  const typedMemberships = (membershipsResult.data as unknown as MembershipWithOrg[]) || []
   const currentMembership = typedMemberships[0] || null
   const currentOrg = currentMembership?.organization
 
@@ -68,34 +71,7 @@ export default async function DashboardLayout({
             )}
           </div>
 
-          <nav className="space-y-1 text-sm font-medium">
-            <Link
-              href="/dashboard"
-              className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-muted transition-colors text-foreground"
-            >
-              Dashboard
-            </Link>
-            <Link
-              href="/dashboard/timesheets"
-              className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-            >
-              Timesheets
-            </Link>
-            <Link
-              href="/dashboard/analytics"
-              className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-            >
-              Analytics
-            </Link>
-            {['owner', 'admin', 'manager'].includes(currentMembership?.role || '') && (
-              <Link
-                href="/dashboard/approvals"
-                className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-              >
-                Approvals
-              </Link>
-            )}
-          </nav>
+          <DashboardNav userRole={currentMembership?.role} />
         </div>
 
         <div className="border-t pt-4 space-y-3">

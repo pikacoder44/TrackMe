@@ -20,15 +20,25 @@ export default async function TimesheetsPage() {
 
   if (!user) return null
 
-  // Fetch organization membership
-  const { data: memberships } = await supabase
-    .from('organization_members')
-    .select('organization_id')
-    .eq('user_id', user.id)
+  // Fetch organization membership and time entries concurrently
+  const [membershipsResult, timeEntriesResult] = await Promise.all([
+    supabase
+      .from('organization_members')
+      .select('organization_id')
+      .eq('user_id', user.id),
+    supabase
+      .from('time_entries')
+      .select(
+        'id, started_at, ended_at, duration_seconds, entry_type, approval_status, description, project:projects(name)'
+      )
+      .eq('user_id', user.id)
+      .order('started_at', { ascending: false }),
+  ])
 
-  const currentOrg = memberships?.[0]?.organization_id
+  const currentOrg = membershipsResult.data?.[0]?.organization_id
+  const timeEntries = timeEntriesResult.data
 
-  // Fetch projects for modal dropdown
+  // Fetch projects for modal dropdown if organization exists
   const { data: projects } = currentOrg
     ? await supabase
         .from('projects')
@@ -36,15 +46,6 @@ export default async function TimesheetsPage() {
         .eq('organization_id', currentOrg)
         .eq('is_active', true)
     : { data: [] }
-
-  // Fetch user's time entries
-  const { data: timeEntries } = await supabase
-    .from('time_entries')
-    .select(
-      'id, started_at, ended_at, duration_seconds, entry_type, approval_status, description, project:projects(name)'
-    )
-    .eq('user_id', user.id)
-    .order('started_at', { ascending: false })
 
   // Prepare CSV entries
   const csvExportEntries: CSVEntry[] = (timeEntries || []).map((e) => {

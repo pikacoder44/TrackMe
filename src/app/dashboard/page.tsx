@@ -11,23 +11,32 @@ export default async function DashboardPage() {
 
   if (!user) return null
 
-  // Fetch current user's membership and organization
-  const { data: memberships } = await supabase
-    .from('organization_members')
-    .select('organization_id, role, organization:organizations(id, name)')
-    .eq('user_id', user.id)
+  // 1. Fetch user's membership and active session concurrently
+  const [membershipsResult, activeSessionResult, recentSessionsResult] = await Promise.all([
+    supabase
+      .from('organization_members')
+      .select('organization_id, role, organization:organizations(id, name)')
+      .eq('user_id', user.id),
+    supabase
+      .from('work_sessions')
+      .select('id, status, started_at, project_id, notes, organization_id')
+      .eq('user_id', user.id)
+      .in('status', ['active', 'paused'])
+      .maybeSingle(),
+    supabase
+      .from('work_sessions')
+      .select('id, started_at, ended_at, status, notes, project:projects(name)')
+      .eq('user_id', user.id)
+      .order('started_at', { ascending: false })
+      .limit(5),
+  ])
 
+  const memberships = membershipsResult.data
+  const activeSession = activeSessionResult.data
+  const recentSessions = recentSessionsResult.data
   const currentOrg = memberships?.[0]?.organization_id
 
-  // Fetch open session (active or paused)
-  const { data: activeSession } = await supabase
-    .from('work_sessions')
-    .select('id, status, started_at, project_id, notes, organization_id')
-    .eq('user_id', user.id)
-    .in('status', ['active', 'paused'])
-    .maybeSingle()
-
-  // Fetch organization projects
+  // 2. Fetch organization projects if org exists
   const { data: projects } = currentOrg
     ? await supabase
         .from('projects')
@@ -35,14 +44,6 @@ export default async function DashboardPage() {
         .eq('organization_id', currentOrg)
         .eq('is_active', true)
     : { data: [] }
-
-  // Fetch recent sessions summary
-  const { data: recentSessions } = await supabase
-    .from('work_sessions')
-    .select('id, started_at, ended_at, status, notes, project:projects(name)')
-    .eq('user_id', user.id)
-    .order('started_at', { ascending: false })
-    .limit(5)
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">

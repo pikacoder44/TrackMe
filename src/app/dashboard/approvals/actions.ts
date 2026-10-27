@@ -35,8 +35,8 @@ export async function approveTimeEntry(entryId: string, organizationId: string) 
     .eq('organization_id', organizationId)
 
   if (error) return { error: error.message }
-  revalidatePath('/dashboard/approvals')
-  revalidatePath('/dashboard/timesheets')
+  revalidatePath('/dashboard/approvals', 'page')
+  revalidatePath('/dashboard/timesheets', 'page')
   return { success: true }
 }
 
@@ -50,7 +50,7 @@ export async function rejectTimeEntry(entryId: string, organizationId: string) {
     .eq('organization_id', organizationId)
 
   if (error) return { error: error.message }
-  revalidatePath('/dashboard/approvals')
-  revalidatePath('/dashboard/timesheets')
+  revalidatePath('/dashboard/approvals', 'page')
+  revalidatePath('/dashboard/timesheets', 'page')
   return { success: true }
 }
