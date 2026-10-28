@@ -1,6 +1,10 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204 })
+}
+
 /** POST /api/v1/sessions/clock-out
  * Body: { session_id }
  * Ends the session and creates a time_entry record.

@@ -17,6 +17,10 @@ interface IngestionPayload {
   events: IngestionEvent[]
 }
 
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204 })
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
