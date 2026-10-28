@@ -1,6 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 import type { EmployeeStatus, ActivitySummary } from './page'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 
@@ -30,9 +32,40 @@ const STATUS_CONFIG = {
   offline: { label: 'Offline', bg: '#F3F4F6', text: '#6B7280', dot: '#D1D5DB' },
 }
 
-export function ManagerDashboardClient({ employeeStatuses, activitySummaries }: Props) {
+export function ManagerDashboardClient({ employeeStatuses, activitySummaries, currentUserRole }: Props) {
+  const router = useRouter()
   const [tab, setTab] = useState<'live' | 'activity'>('live')
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
+
+  // Supabase Realtime: refresh when activity or sessions change for this org
+  useEffect(() => {
+    const supabase = createClient()
+
+    // Derive org from the first employee's session (all share the same org)
+    // We can't filter by org_id here without passing it as prop — subscribe to table-level changes
+    const activityChannel = supabase
+      .channel('manager:activity_events')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'activity_events' }, () =>
+        router.refresh()
+      )
+      .subscribe()
+
+    const sessionChannel = supabase
+      .channel('manager:work_sessions')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'work_sessions' },
+        () => router.refresh()
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(activityChannel)
+      supabase.removeChannel(sessionChannel)
+    }
+  }, [router])
+
+  void currentUserRole // used by parent for RBAC, not needed here
 
   const selectedSummary = activitySummaries.find((s) => s.userId === selectedUserId)
 

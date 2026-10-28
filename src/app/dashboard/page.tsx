@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { TimeTracker } from '@/components/dashboard/time-tracker'
+import { EmployeeDashboardClient } from '@/components/dashboard/employee-dashboard-client'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 
 export default async function DashboardPage() {
@@ -11,7 +11,6 @@ export default async function DashboardPage() {
 
   if (!user) return null
 
-  // 1. Fetch user's membership and active session concurrently
   const [membershipsResult, activeSessionResult, recentSessionsResult] = await Promise.all([
     supabase
       .from('organization_members')
@@ -36,7 +35,6 @@ export default async function DashboardPage() {
   const recentSessions = recentSessionsResult.data
   const currentOrg = memberships?.[0]?.organization_id
 
-  // 2. Fetch organization projects if org exists
   const { data: projects } = currentOrg
     ? await supabase
         .from('projects')
@@ -50,12 +48,12 @@ export default async function DashboardPage() {
       <div>
         <h2 className="text-2xl font-bold tracking-tight">Dashboard Overview</h2>
         <p className="text-sm text-muted-foreground">
-          Track work time, manage active sessions, and review recent productivity.
+          Track work time, manage active sessions, and review real-time app usage.
         </p>
       </div>
 
       {currentOrg ? (
-        <TimeTracker
+        <EmployeeDashboardClient
           organizationId={currentOrg}
           activeSession={activeSession}
           projects={projects || []}
