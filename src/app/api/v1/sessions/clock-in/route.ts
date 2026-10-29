@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
 export async function OPTIONS() {
@@ -9,7 +9,7 @@ export async function OPTIONS() {
  * Creates a new active work session for the authenticated user.
  * Returns { sessionId, organizationId }
  */
-export async function POST(_request: NextRequest) {
+export async function POST() {
   try {
     const supabase = await createClient()
     const {

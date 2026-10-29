@@ -177,7 +177,6 @@ export function TimeTracker({
       } catch {
         // shortcut: silent fail — telemetry is best-effort, data loss is acceptable here
       }
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       void supabase // keep reference so eslint doesn't complain about unused import
     }
 

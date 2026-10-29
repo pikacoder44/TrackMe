@@ -70,6 +70,8 @@ export default async function ManagerPage() {
   const orgId = membership.organization_id
 
   // Fetch team data concurrently
+  // eslint-disable-next-line react-hooks/purity
+  const eightHoursAgo = new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString()
   const [membersResult, sessionsResult, eventsResult] = await Promise.all([
     supabase
       .from('organization_members')
@@ -84,7 +86,7 @@ export default async function ManagerPage() {
       .from('activity_events')
       .select('user_id, session_id, event_type, window_title, app_name, recorded_at')
       .eq('organization_id', orgId)
-      .gte('recorded_at', new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString())
+      .gte('recorded_at', eightHoursAgo)
       .order('recorded_at', { ascending: false }),
   ])
 

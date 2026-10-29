@@ -20,9 +20,19 @@ function formatDuration(seconds: number) {
 }
 
 function SessionTimer({ startedAt }: { startedAt: string }) {
-  const startMs = new Date(startedAt).getTime()
-  const nowMs = Date.now()
-  const elapsed = Math.floor((nowMs - startMs) / 1000)
+  const [elapsed, setElapsed] = useState(0)
+
+  useEffect(() => {
+    const startMs = new Date(startedAt).getTime()
+    const updateElapsed = () => {
+      setElapsed(Math.max(0, Math.floor((Date.now() - startMs) / 1000)))
+    }
+
+    updateElapsed()
+    const interval = setInterval(updateElapsed, 1000)
+    return () => clearInterval(interval)
+  }, [startedAt])
+
   return <span>{formatDuration(elapsed)}</span>
 }
 
