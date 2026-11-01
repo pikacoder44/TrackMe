@@ -7,6 +7,7 @@ DECLARE
   org_acme_id CONSTANT UUID := '11111111-1111-4111-a111-111111111111';
   org_globex_id CONSTANT UUID := '22222222-2222-4222-a222-222222222222';
 
+  user_superadmin_id CONSTANT UUID := '99999999-9999-4999-a999-999999999999';
   user_owner_id CONSTANT UUID := 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa';
   user_manager_id CONSTANT UUID := 'bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb';
   user_emp1_id CONSTANT UUID := 'cccccccc-cccc-4ccc-cccc-cccccccccccc';
@@ -22,6 +23,7 @@ BEGIN
   -- 1. Create auth users (if auth.users exists in local Supabase environment)
   INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
   VALUES 
+    (user_superadmin_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'admin@trackme.io', crypt('Password123!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Platform SuperAdmin","role":"super_admin"}', now(), now()),
     (user_owner_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'owner@acme.com', crypt('Password123!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Alice Owner"}', now(), now()),
     (user_manager_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'manager@acme.com', crypt('Password123!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Bob Manager"}', now(), now()),
     (user_emp1_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'dev1@acme.com', crypt('Password123!', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"full_name":"Charlie Dev"}', now(), now()),
@@ -29,33 +31,37 @@ BEGIN
   ON CONFLICT (id) DO NOTHING;
 
   -- 2. Ensure Profiles exist
-  INSERT INTO public.profiles (id, email, full_name, avatar_url)
+  INSERT INTO public.profiles (id, email, full_name, avatar_url, role)
   VALUES
-    (user_owner_id, 'owner@acme.com', 'Alice Owner', 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alice'),
-    (user_manager_id, 'manager@acme.com', 'Bob Manager', 'https://api.dicebear.com/7.x/avataaars/svg?seed=Bob'),
-    (user_emp1_id, 'dev1@acme.com', 'Charlie Dev', 'https://api.dicebear.com/7.x/avataaars/svg?seed=Charlie'),
-    (user_emp2_id, 'designer@acme.com', 'Diana Designer', 'https://api.dicebear.com/7.x/avataaars/svg?seed=Diana')
+    (user_superadmin_id, 'admin@trackme.io', 'Platform SuperAdmin', 'https://api.dicebear.com/7.x/avataaars/svg?seed=SuperAdmin', 'super_admin'),
+    (user_owner_id, 'owner@acme.com', 'Alice Owner', 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alice', 'owner'),
+    (user_manager_id, 'manager@acme.com', 'Bob Manager', 'https://api.dicebear.com/7.x/avataaars/svg?seed=Bob', 'manager'),
+    (user_emp1_id, 'dev1@acme.com', 'Charlie Dev', 'https://api.dicebear.com/7.x/avataaars/svg?seed=Charlie', 'employee'),
+    (user_emp2_id, 'designer@acme.com', 'Diana Designer', 'https://api.dicebear.com/7.x/avataaars/svg?seed=Diana', 'employee')
   ON CONFLICT (id) DO UPDATE 
   SET full_name = EXCLUDED.full_name,
-      avatar_url = EXCLUDED.avatar_url;
+      avatar_url = EXCLUDED.avatar_url,
+      role = EXCLUDED.role;
 
-  -- 3. Organizations
-  INSERT INTO public.organizations (id, name, slug)
+  -- 3. Organizations / Internal Company Departments
+  INSERT INTO public.organizations (id, name, slug, require_approval, color)
   VALUES
-    (org_acme_id, 'Acme Technologies', 'acme-tech'),
-    (org_globex_id, 'Globex Corporation', 'globex-corp')
-  ON CONFLICT (id) DO NOTHING;
+    (org_acme_id, 'Engineering & Tech', 'engineering-tech', true, '#3B82F6'),
+    (org_globex_id, 'Design & Product', 'design-product', false, '#10B981')
+  ON CONFLICT (id) DO UPDATE
+  SET name = EXCLUDED.name,
+      slug = EXCLUDED.slug,
+      color = EXCLUDED.color;
 
   -- 4. Organization Members
-  -- Acme Tech team: Alice (owner), Bob (manager), Charlie (employee), Diana (employee)
+  -- Engineering & Tech department roster: Bob (manager), Charlie (employee), Diana (employee)
+  -- Note: Super Admin (user_superadmin_id) has global platform access and is NOT inserted into team rosters.
+  -- Design & Product starts with 0 assigned members to showcase the unassigned team state.
   INSERT INTO public.organization_members (organization_id, user_id, role)
   VALUES
-    (org_acme_id, user_owner_id, 'owner'),
     (org_acme_id, user_manager_id, 'manager'),
     (org_acme_id, user_emp1_id, 'employee'),
-    (org_acme_id, user_emp2_id, 'employee'),
-    -- Alice also owns Globex Corporation
-    (org_globex_id, user_owner_id, 'owner')
+    (org_acme_id, user_emp2_id, 'employee')
   ON CONFLICT (organization_id, user_id) DO UPDATE
   SET role = EXCLUDED.role;
 
