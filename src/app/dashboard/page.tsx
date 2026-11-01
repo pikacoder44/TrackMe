@@ -7,6 +7,7 @@ import {
 } from './dashboard-client'
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { PendingApprovals, type PendingMember } from '@/components/dashboard/pending-approvals'
+import { DailyReportUploader } from '@/components/dashboard/daily-report-uploader'
 
 interface MemberWithProfile {
   id: string
@@ -64,7 +65,9 @@ export default async function DashboardPage() {
   // eslint-disable-next-line react-hooks/purity
   const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString()
 
-  const [membersResult, sessionsResult, eventsResult] = await Promise.all([
+  const todayDateStr = new Date().toISOString().slice(0, 10)
+
+  const [membersResult, sessionsResult, eventsResult, todayReportResult] = await Promise.all([
     supabase
       .from('organization_members')
       .select('id, user_id, role, approval_status, created_at, profile:profiles(full_name, email, username)')
@@ -80,6 +83,14 @@ export default async function DashboardPage() {
       .eq('organization_id', orgId)
       .gte('recorded_at', twelveHoursAgo)
       .order('recorded_at', { ascending: false }),
+    supabase
+      .from('daily_reports')
+      .select('id, file_name, file_url, created_at')
+      .eq('organization_id', orgId)
+      .eq('report_date', todayDateStr)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ])
 
   const allMembers = (membersResult.data as unknown as MemberWithProfile[]) ?? []
@@ -163,10 +174,23 @@ export default async function DashboardPage() {
   })
 
   const isManager = ['owner', 'admin', 'manager'].includes(membership.role)
+  const todayReport = todayReportResult?.data
+    ? {
+        id: todayReportResult.data.id,
+        fileName: todayReportResult.data.file_name,
+        fileUrl: todayReportResult.data.file_url,
+        createdAt: todayReportResult.data.created_at,
+      }
+    : null
 
   return (
     <div className="space-y-6">
-      {isManager && <PendingApprovals pendingMembers={pendingMembers} />}
+      {isManager && (
+        <>
+          <DailyReportUploader organizationId={orgId} todayReport={todayReport} />
+          <PendingApprovals pendingMembers={pendingMembers} />
+        </>
+      )}
       <TeamDashboardClient
         organizationName={orgName}
         organizationId={orgId}

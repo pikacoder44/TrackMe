@@ -232,3 +232,80 @@ export async function rejectEmployee(memberId: string) {
   return { success: true }
 }
 
+export async function uploadDailyReportAction(formData: FormData) {
+  const { supabase, user } = await getAuthenticatedUser()
+  const organizationId = formData.get('organizationId') as string
+  const file = formData.get('reportFile') as File | null
+
+  if (!organizationId) {
+    return { error: 'Organization ID is required' }
+  }
+  if (!file || file.size === 0) {
+    return { error: 'Please select a valid report file to upload.' }
+  }
+
+  // Verify caller is a manager/owner/admin
+  const { data: member } = await supabase
+    .from('organization_members')
+    .select('role')
+    .eq('organization_id', organizationId)
+    .eq('user_id', user.id)
+    .single()
+
+  if (!member || !['owner', 'admin', 'manager', 'super_admin'].includes(member.role)) {
+    return { error: 'Unauthorized: only managers can upload daily team reports.' }
+  }
+
+  try {
+    const fileBuffer = Buffer.from(await file.arrayBuffer())
+    const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+    const storagePath = `${organizationId}/${Date.now()}_${sanitizedName}`
+
+    let fileUrl = ''
+
+    // Attempt upload to Supabase Storage bucket 'daily-reports'
+    const { data: uploadData, error: uploadErr } = await supabase.storage
+      .from('daily-reports')
+      .upload(storagePath, fileBuffer, {
+        contentType: file.type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        upsert: true,
+      })
+
+    if (!uploadErr && uploadData?.path) {
+      const { data: publicUrlData } = supabase.storage
+        .from('daily-reports')
+        .getPublicUrl(uploadData.path)
+      fileUrl = publicUrlData.publicUrl
+    } else {
+      // Fallback Data URL storage for local / dev resilience
+      const base64 = fileBuffer.toString('base64')
+      fileUrl = `data:${file.type || 'application/octet-stream'};base64,${base64}`
+    }
+
+    const todayStr = new Date().toISOString().slice(0, 10)
+
+    const { error: insertErr } = await supabase
+      .from('daily_reports')
+      .insert({
+        organization_id: organizationId,
+        manager_id: user.id,
+        file_url: fileUrl,
+        file_name: file.name,
+        report_date: todayStr,
+      })
+
+    if (insertErr) {
+      return { error: insertErr.message }
+    }
+
+    revalidatePath('/dashboard', 'page')
+    revalidatePath('/admin/dashboard', 'page')
+    return { success: true, fileName: file.name }
+  } catch (err: unknown) {
+    return {
+      error: err instanceof Error ? err.message : 'Failed to upload report.',
+    }
+  }
+}
+
+

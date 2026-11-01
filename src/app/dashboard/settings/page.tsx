@@ -7,6 +7,7 @@ interface OrgWithDetails {
   id: string
   name: string
   team_code: string | null
+  require_approval: boolean
 }
 
 export default async function SettingsPage() {
@@ -20,12 +21,12 @@ export default async function SettingsPage() {
 
   const { data: membership } = await supabase
     .from('organization_members')
-    .select('role, organization:organizations(id, name, team_code)')
+    .select('role, organization:organizations(id, name, team_code, require_approval)')
     .eq('user_id', user.id)
     .maybeSingle()
 
   const role = membership?.role
-  const isManager = role && ['owner', 'admin', 'manager'].includes(role)
+  const isManager = role && ['owner', 'admin', 'manager', 'super_admin'].includes(role)
   const org = membership?.organization as unknown as OrgWithDetails | null
 
   if (!isManager || !org) {
@@ -48,11 +49,11 @@ export default async function SettingsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-4xl">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">Organization Settings</h2>
+        <h2 className="text-2xl font-bold tracking-tight">Organization Settings & Onboarding</h2>
         <p className="text-sm text-muted-foreground">
-          Configure security credentials and team access codes for {org.name}.
+          Configure security credentials, invite links, and employee approval policies for {org.name}.
         </p>
       </div>
 
@@ -60,6 +61,7 @@ export default async function SettingsPage() {
         organizationId={org.id}
         organizationName={org.name}
         initialTeamCode={org.team_code}
+        initialRequireApproval={org.require_approval ?? true}
       />
     </div>
   )

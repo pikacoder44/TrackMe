@@ -21,9 +21,13 @@ export function DashboardNav({ userRole }: DashboardNavProps) {
     { href: '/dashboard/analytics', label: 'Analytics' },
   ]
 
-  if (userRole && ['owner', 'admin', 'manager'].includes(userRole)) {
+  if (userRole && ['owner', 'admin', 'manager', 'super_admin'].includes(userRole)) {
     links.push({ href: '/dashboard/approvals', label: 'Approvals' })
-    links.push({ href: '/dashboard/settings', label: 'Settings & Team Code' })
+    links.push({ href: '/dashboard/settings', label: 'Settings & Invites' })
+  }
+
+  if (userRole === 'super_admin') {
+    links.push({ href: '/admin/dashboard', label: 'Super Admin Portal' })
   }
 
   return (

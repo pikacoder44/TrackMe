@@ -18,7 +18,7 @@ async function getManagerContext(organizationId: string) {
     .eq('user_id', user.id)
     .single()
 
-  if (!member || !['owner', 'admin', 'manager'].includes(member.role)) {
+  if (!member || !['owner', 'admin', 'manager', 'super_admin'].includes(member.role)) {
     throw new Error('Unauthorized: only managers, admins, or owners can update team settings.')
   }
 
@@ -87,6 +87,82 @@ export async function regenerateTeamCode(organizationId: string) {
   } catch (err: unknown) {
     return {
       error: err instanceof Error ? err.message : 'Failed to regenerate team code.',
+    }
+  }
+}
+
+export async function toggleManagerApprovalAction(organizationId: string, requireApproval: boolean) {
+  if (!organizationId) return { error: 'Organization ID is required.' }
+
+  try {
+    const { supabase } = await getManagerContext(organizationId)
+
+    const { error } = await supabase
+      .from('organizations')
+      .update({
+        require_approval: requireApproval,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', organizationId)
+
+    if (error) {
+      return { error: error.message }
+    }
+
+    revalidatePath('/dashboard/settings', 'page')
+    return { success: true, requireApproval }
+  } catch (err: unknown) {
+    return {
+      error: err instanceof Error ? err.message : 'Failed to update manager approval policy.',
+    }
+  }
+}
+
+export async function sendEmployeeInviteAction(organizationId: string, email: string) {
+  const cleanEmail = (email || '').trim().toLowerCase()
+  if (!organizationId || !cleanEmail) {
+    return { error: 'Organization and employee email are required.' }
+  }
+
+  try {
+    const { supabase } = await getManagerContext(organizationId)
+
+    // Verify organization exists and fetch code
+    const { data: org } = await supabase
+      .from('organizations')
+      .select('name, team_code')
+      .eq('id', organizationId)
+      .single()
+
+    if (!org) return { error: 'Organization not found.' }
+
+    // If profile exists for this email, link them or check
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id')
+      .ilike('email', cleanEmail)
+      .maybeSingle()
+
+    if (profile) {
+      await supabase.from('organization_members').upsert(
+        {
+          organization_id: organizationId,
+          user_id: profile.id,
+          role: 'employee',
+          approval_status: 'approved',
+        },
+        { onConflict: 'organization_id,user_id' }
+      )
+    }
+
+    revalidatePath('/dashboard/settings', 'page')
+    return {
+      success: true,
+      message: `Invitation registered for ${cleanEmail}. Direct Join Link: /join/${org.team_code}`,
+    }
+  } catch (err: unknown) {
+    return {
+      error: err instanceof Error ? err.message : 'Failed to send invite.',
     }
   }
 }
