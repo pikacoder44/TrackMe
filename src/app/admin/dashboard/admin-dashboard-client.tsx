@@ -422,15 +422,15 @@ export function AdminDashboardClient({
                             Team Manager
                           </span>
                           {team.manager.isPendingSignup ? (
-                            <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-blue-500/15 text-blue-800 dark:text-blue-300 border border-blue-500/30 font-semibold">
+                            <span className="text-[10px] uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-blue-500/15 text-blue-800 dark:text-blue-300 border border-blue-500/30 font-semibold">
                               Pre-Approved Slot (Pending Sign-up)
                             </span>
                           ) : team.manager.hasUploadedToday ? (
-                            <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-600 text-white font-semibold shadow-xs">
+                            <span className="text-[10px] uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-600 text-white font-semibold shadow-xs">
                               Report Uploaded Today
                             </span>
                           ) : (
-                            <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-900 dark:text-amber-300 border border-amber-500/40 font-semibold">
+                            <span className="text-[10px] uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-900 dark:text-amber-300 border border-amber-500/40 font-semibold">
                               Report Missing Today
                             </span>
                           )}
