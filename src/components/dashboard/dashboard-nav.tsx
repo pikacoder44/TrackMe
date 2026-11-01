@@ -16,14 +16,13 @@ export function DashboardNav({ userRole }: DashboardNavProps) {
   const pathname = usePathname()
 
   const links: NavLinkItem[] = [
-    { href: '/dashboard', label: 'Dashboard' },
+    { href: '/dashboard', label: 'Team Overview' },
     { href: '/dashboard/timesheets', label: 'Timesheets' },
     { href: '/dashboard/analytics', label: 'Analytics' },
   ]
 
   if (userRole && ['owner', 'admin', 'manager'].includes(userRole)) {
     links.push({ href: '/dashboard/approvals', label: 'Approvals' })
-    links.push({ href: '/dashboard/manager', label: 'Team Monitor' })
   }
 
   return (
