@@ -1,17 +1,17 @@
 # TrackMe
 
-Privacy-conscious, multi-tenant engineering time tracking and productivity intelligence platform. Built with Next.js 16 (App Router), Supabase SSR, and a lightweight Tauri 2 desktop background agent.
+Privacy-conscious, multi-tenant engineering time tracking and productivity intelligence platform. Built with Next.js 16 (App Router), Supabase SSR, and a lightweight Manifest V3 WebExtension collector.
 
 ---
 
 ## What is TrackMe?
 
-TrackMe helps distributed engineering teams track billable time and project velocity without invasive tracking tools. It captures active work sessions and idle states at the operating system level, stores them locally, and syncs them to a multi-tenant cloud dashboard.
+TrackMe helps distributed engineering teams track billable time and project velocity without invasive tracking tools. It captures active work sessions and idle states, stores them locally, and syncs them to a multi-tenant cloud dashboard.
 
-- **No surveillance telemetry**: Tracks window application classes and idle intervals. Does not record keystrokes, screen captures, or sensitive window contents.
+- **No surveillance telemetry**: Tracks domain/active tab contexts and idle intervals. Does not record keystrokes, screen captures, or sensitive page contents.
 - **Row-Level Security by default**: Organizations and projects are strictly partitioned in PostgreSQL using Supabase RLS.
-- **Offline buffering**: Desktop agent collects ticks into an offline local buffer and synchronizes in batches when an internet connection is available.
-- **Idempotent ingestion**: API prevents duplicate event inserts on connection drops or retries via unique SHA-256 / UUID event keys.
+- **Offline buffering**: Extension collector collects ticks into an offline local buffer and synchronizes in batches when an internet connection is available.
+- **Idempotent ingestion**: API prevents duplicate event inserts on connection drops or retries via unique UUID event keys.
 
 ---
 
@@ -21,8 +21,8 @@ TrackMe helps distributed engineering teams track billable time and project velo
 - **UI Components**: Radix / Base UI primitive components
 - **Visualizations**: Recharts
 - **Database & Auth**: Supabase (PostgreSQL, Row-Level Security, Auth Helpers for SSR)
-- **Desktop Agent**: Tauri 2 (Rust system-tray daemon + lightweight web client)
-- **Testing**: Vitest, JSDOM, React Testing Library, Playwright
+- **Employee Telemetry Collector**: WebExtension Manifest V3 (Chrome, Firefox, Brave in `/extension`)
+- **Testing**: Vitest, JSDOM, React Testing Library, Playwright, web-ext
 
 ---
 
@@ -30,9 +30,9 @@ TrackMe helps distributed engineering teams track billable time and project velo
 
 ```
 +-----------------------------------------------------------+
-|                    Desktop Agent (Tauri 2)                |
-|  - System idle detection & active window monitoring       |
-|  - Local offline buffer (in-memory / local storage)       |
+|              WebExtension Collector (Manifest V3)         |
+|  - System idle detection & active tab monitoring          |
+|  - Local offline buffer (chrome.storage.local)            |
 +-----------------------------+-----------------------------+
                               |
                      POST /api/v1/events/sync
@@ -74,7 +74,7 @@ organizations (id, name, slug, created_at)
 2. **Timesheets & Approvals**: Review submitted timesheet records, filter by date, add manual time entries, and approve/reject entries as an organization manager.
 3. **Analytics Dashboard**: Weekly logged hours breakdown, project distribution charts, and CSV report export.
 4. **Idempotent Batch Sync**: Custom API endpoint (`POST /api/v1/events/sync`) handling batch event arrays with duplicate prevention.
-5. **Native Desktop Daemon**: Tauri 2 application running in the background with local event queue inspection and manual force-sync triggers.
+5. **Browser Extension Collector**: Manifest V3 extension running in Chrome, Firefox, and Brave for idle detection, session control, and telemetry synchronization.
 
 ---
 
@@ -84,7 +84,6 @@ organizations (id, name, slug, created_at)
 
 - Node.js 20+
 - npm 10+
-- (Optional) Rust & Cargo if compiling the Tauri desktop client
 
 ### 1. Clone & Configure Environment
 
@@ -118,12 +117,10 @@ npm run dev
 
 Visit [http://localhost:3000](http://localhost:3000) to log in or create an organization.
 
-### 4. Running the Desktop Agent
+### 4. Running & Testing the Browser Extension
 
 ```bash
-cd desktop
-npm install
-npm run tauri dev
+npm run extension:lint
 ```
 
 ---

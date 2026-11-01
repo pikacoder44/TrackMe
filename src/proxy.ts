@@ -4,10 +4,15 @@ import { updateSession } from '@/lib/supabase/middleware'
 const ALLOWED_ORIGIN = 'http://localhost:5173'
 
 function getCorsHeaders(origin: string | null) {
-  // Support desktop client origin or any origin matching localhost:5173 / development
-  const allowedOrigin = origin && (origin === ALLOWED_ORIGIN || origin.startsWith('http://localhost:'))
-    ? origin
-    : ALLOWED_ORIGIN
+  // Support browser extension origins (chrome-extension://, moz-extension://) and localhost development
+  const isAllowed =
+    origin &&
+    (origin.startsWith('chrome-extension://') ||
+      origin.startsWith('moz-extension://') ||
+      origin.startsWith('http://localhost:') ||
+      origin === ALLOWED_ORIGIN)
+
+  const allowedOrigin = isAllowed ? origin : ALLOWED_ORIGIN
 
   return {
     'Access-Control-Allow-Origin': allowedOrigin,

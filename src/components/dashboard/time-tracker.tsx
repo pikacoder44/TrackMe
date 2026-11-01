@@ -146,8 +146,6 @@ export function TimeTracker({
   useEffect(() => {
     if (!currentSession || currentSession.status !== 'active') return
 
-    const supabase = createClient()
-
     const emit = async () => {
       const simApp = pickSimApp()
       const isActive = Math.random() > 0.2 // 80% active
@@ -177,7 +175,6 @@ export function TimeTracker({
       } catch {
         // shortcut: silent fail — telemetry is best-effort, data loss is acceptable here
       }
-      void supabase // keep reference so eslint doesn't complain about unused import
     }
 
     const interval = setInterval(emit, 10_000)

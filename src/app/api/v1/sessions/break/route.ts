@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
         session_id,
         user_id: user.id,
         event_type: type,
-        timestamp: new Date().toISOString(),
+        recorded_at: new Date().toISOString(),
       }),
     ])
 
