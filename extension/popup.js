@@ -9,16 +9,32 @@
 const DEFAULT_SERVER_URL = 'http://localhost:3000';
 
 // State
+let isAuthenticated = false;
 let currentStatus = 'offline';
 let sessionStartedAt = null;
 let sessionId = null;
 let organizationId = null;
+let organizationName = null;
+let employeeProfile = null;
 let serverUrl = DEFAULT_SERVER_URL;
 let authToken = '';
 let timerInterval = null;
 let approvalStatus = 'approved';
 
 // DOM Elements
+const viewAuth = document.getElementById('view-auth');
+const viewAuthenticated = document.getElementById('view-authenticated');
+const formLogin = document.getElementById('form-login');
+const loginUsername = document.getElementById('login-username');
+const loginPassword = document.getElementById('login-password');
+const btnDoLogin = document.getElementById('btn-do-login');
+const btnSignOut = document.getElementById('btn-sign-out');
+
+const employeeNameEl = document.getElementById('employee-name');
+const employeeOrgEl = document.getElementById('employee-org');
+const badgeRole = document.getElementById('badge-role');
+const badgeApproval = document.getElementById('badge-approval');
+
 const statusBadge = document.getElementById('status-badge');
 const statusText = document.getElementById('status-text');
 const timerValue = document.getElementById('timer-value');
@@ -78,7 +94,7 @@ function formatTime(totalSeconds) {
   return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
-// Update the duration timer display
+// Update duration timer display
 function updateTimer() {
   if (!sessionStartedAt || currentStatus === 'offline') {
     timerValue.textContent = '00:00:00';
@@ -104,9 +120,45 @@ function stopTimer() {
   }
 }
 
-// Render UI according to current status
+// Fetch headers helper
+function getHeaders() {
+  const headers = {
+    'Content-Type': 'application/json'
+  };
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
+  return headers;
+}
+
+// Render UI according to auth state and current session status
 function renderUI() {
-  // Reset classes
+  if (!isAuthenticated) {
+    viewAuth.classList.remove('hidden');
+    viewAuthenticated.classList.add('hidden');
+    stopTimer();
+    return;
+  }
+
+  viewAuth.classList.add('hidden');
+  viewAuthenticated.classList.remove('hidden');
+
+  // Populate profile header
+  if (employeeProfile) {
+    employeeNameEl.textContent = employeeProfile.fullName || employeeProfile.email || 'Employee';
+    employeeOrgEl.textContent = organizationName || employeeProfile.organizationName || 'Organization Roster';
+    badgeRole.textContent = employeeProfile.role || 'employee';
+
+    if (approvalStatus === 'pending') {
+      badgeApproval.className = 'approval-badge approval-pending';
+      badgeApproval.textContent = 'Pending Approval';
+    } else {
+      badgeApproval.className = 'approval-badge approval-approved';
+      badgeApproval.textContent = 'Approved';
+    }
+  }
+
+  // Reset status classes
   statusBadge.className = 'status-badge';
 
   if (approvalStatus === 'pending') {
@@ -164,53 +216,167 @@ function renderUI() {
   }
 }
 
-// Fetch headers helper
-function getHeaders() {
-  const headers = {
-    'Content-Type': 'application/json'
-  };
-  if (authToken) {
-    headers['Authorization'] = `Bearer ${authToken}`;
-  }
-  return headers;
-}
-
-// Load state from chrome.storage.local
+// Load state from chrome.storage.local and verify auth
 async function loadState() {
-  chrome.runtime.sendMessage({ type: 'GET_STATUS' }, (response) => {
-    if (!response) return;
-
-    currentStatus = response.sessionStatus || 'offline';
-    approvalStatus = response.approvalStatus || 'approved';
-    sessionId = response.sessionId;
-    organizationId = response.organizationId;
-    sessionStartedAt = response.sessionStartedAt;
-    serverUrl = response.serverUrl || DEFAULT_SERVER_URL;
-    authToken = response.authToken || '';
+  chrome.storage.local.get([
+    'serverUrl',
+    'authToken',
+    'userProfile',
+    'sessionStatus',
+    'approvalStatus',
+    'sessionId',
+    'organizationId',
+    'organizationName',
+    'sessionStartedAt',
+    'eventQueue',
+    'lastSyncStatus',
+    'lastActiveTab'
+  ], async (items) => {
+    serverUrl = items.serverUrl || DEFAULT_SERVER_URL;
+    authToken = items.authToken || '';
+    employeeProfile = items.userProfile || null;
+    currentStatus = items.sessionStatus || 'offline';
+    approvalStatus = items.approvalStatus || 'approved';
+    sessionId = items.sessionId || null;
+    organizationId = items.organizationId || null;
+    organizationName = items.organizationName || null;
+    sessionStartedAt = items.sessionStartedAt || null;
 
     inputServerUrl.value = serverUrl;
     inputAuthToken.value = authToken;
 
-    queueCount.textContent = response.queueLength ?? 0;
-    syncStatus.textContent = response.lastSyncStatus === 'success' ? 'Synced' : 'Idle';
+    queueCount.textContent = Array.isArray(items.eventQueue) ? items.eventQueue.length : 0;
+    syncStatus.textContent = items.lastSyncStatus === 'success' ? 'Synced' : 'Idle';
 
-    if (response.lastActiveTab) {
-      activityApp.textContent = response.lastActiveTab.appName || 'Web Browser';
-      activityTitle.textContent = response.lastActiveTab.title || response.lastActiveTab.domain || 'Active Page';
+    if (items.lastActiveTab) {
+      activityApp.textContent = items.lastActiveTab.appName || 'Web Browser';
+      activityTitle.textContent = items.lastActiveTab.title || items.lastActiveTab.domain || 'Active Page';
+    }
+
+    // Check with server if authenticated
+    try {
+      const res = await fetch(`${serverUrl}/api/v1/auth/status`, {
+        method: 'GET',
+        headers: getHeaders(),
+        credentials: 'include'
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.authenticated) {
+          isAuthenticated = true;
+          employeeProfile = {
+            id: data.userId,
+            email: data.email,
+            fullName: data.fullName,
+            username: data.username,
+            role: data.role,
+            approvalStatus: data.approvalStatus
+          };
+          organizationId = data.organizationId || organizationId;
+          organizationName = data.organizationName || organizationName;
+          approvalStatus = data.approvalStatus || 'approved';
+
+          await chrome.storage.local.set({
+            userProfile: employeeProfile,
+            organizationId,
+            organizationName,
+            approvalStatus
+          });
+        } else {
+          // If token expired or not logged in
+          if (authToken) {
+            isAuthenticated = false;
+          } else {
+            isAuthenticated = false;
+          }
+        }
+      } else {
+        // If server error, fallback to cached state if token exists
+        isAuthenticated = Boolean(authToken || employeeProfile);
+      }
+    } catch {
+      // Offline fallback
+      isAuthenticated = Boolean(authToken || employeeProfile);
     }
 
     renderUI();
-
-    // Verify latest approval status asynchronously
-    chrome.runtime.sendMessage({ type: 'CHECK_APPROVAL' }, (checkRes) => {
-      if (checkRes && checkRes.success && checkRes.approvalStatus) {
-        if (approvalStatus !== checkRes.approvalStatus) {
-          approvalStatus = checkRes.approvalStatus;
-          renderUI();
-        }
-      }
-    });
   });
+}
+
+// Login Handler
+async function handleLogin(e) {
+  e.preventDefault();
+  const usernameOrEmail = loginUsername.value.trim();
+  const password = loginPassword.value.trim();
+
+  if (!usernameOrEmail || !password) {
+    showAlert('Please enter your credentials.', 'error');
+    return;
+  }
+
+  btnDoLogin.disabled = true;
+  btnDoLogin.textContent = 'Authenticating...';
+
+  try {
+    const res = await fetch(`${serverUrl}/api/v1/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ usernameOrEmail, password })
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Login failed. Please verify credentials.');
+    }
+
+    authToken = data.token;
+    employeeProfile = data.user;
+    organizationId = data.user.organizationId;
+    organizationName = data.user.organizationName;
+    approvalStatus = data.user.approvalStatus || 'approved';
+    isAuthenticated = true;
+
+    await chrome.storage.local.set({
+      authToken,
+      userProfile: employeeProfile,
+      organizationId,
+      organizationName,
+      approvalStatus
+    });
+
+    showAlert('Signed in successfully!', 'success', 3000);
+    renderUI();
+  } catch (err) {
+    showAlert(err.message, 'error');
+  } finally {
+    btnDoLogin.disabled = false;
+    btnDoLogin.textContent = 'Sign In';
+  }
+}
+
+// Sign Out Handler
+async function handleSignOut() {
+  stopTimer();
+  authToken = '';
+  employeeProfile = null;
+  isAuthenticated = false;
+  currentStatus = 'offline';
+  sessionId = null;
+  sessionStartedAt = null;
+
+  await chrome.storage.local.set({
+    authToken: '',
+    userProfile: null,
+    sessionId: null,
+    sessionStartedAt: null,
+    sessionStatus: 'offline'
+  });
+
+  showAlert('Signed out of extension.', 'info', 2500);
+  renderUI();
 }
 
 // Clock In / Mark Attendance
@@ -227,7 +393,9 @@ async function handleClockIn() {
 
     if (!res.ok) {
       if (res.status === 401) {
-        throw new Error(`Unauthorized. Please log in to TrackMe at ${serverUrl} or configure your auth token in settings.`);
+        isAuthenticated = false;
+        renderUI();
+        throw new Error('Session expired. Please sign in again.');
       }
       const data = await res.json().catch(() => ({}));
       if (res.status === 403 && data.approval_status === 'pending') {
@@ -324,13 +492,15 @@ async function handleEndBreak() {
 
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      throw new Error(data.error || `Failed to resume work: ${res.status}`);
+      throw new Error(data.error || `Failed to resume session: ${res.status}`);
     }
 
     currentStatus = 'active';
     await chrome.storage.local.set({ sessionStatus: 'active' });
-    chrome.runtime.sendMessage({ type: 'CAPTURE_TICK', reason: 'resume_work' });
-    showAlert('Welcome back! Tracking resumed.', 'success');
+
+    chrome.runtime.sendMessage({ type: 'CAPTURE_TICK', reason: 'break_end_click' });
+
+    showAlert('Resumed work session.', 'success');
     renderUI();
   } catch (err) {
     showAlert(err.message, 'error');
@@ -341,9 +511,6 @@ async function handleEndBreak() {
 
 // Clock Out
 async function handleClockOut() {
-  const confirmClockOut = confirm('Are you sure you want to clock out and end this session?');
-  if (!confirmClockOut) return;
-
   btnClockOutActive.disabled = true;
   btnClockOutBreak.disabled = true;
 
@@ -418,6 +585,7 @@ async function handleSaveSettings() {
 
   settingsPanel.classList.add('hidden');
   showAlert('Settings saved successfully.', 'success', 2500);
+  loadState();
 }
 
 // Test Connection
@@ -432,14 +600,15 @@ async function handleTestConnection() {
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   try {
-    const res = await fetch(`${testUrl}/api/v1/sessions/clock-in`, {
-      method: 'OPTIONS',
+    const res = await fetch(`${testUrl}/api/v1/auth/status`, {
+      method: 'GET',
       headers,
       credentials: 'include'
     });
 
-    if (res.ok || res.status === 204 || res.status === 401) {
-      showAlert(`Connected to ${testUrl} (${res.status === 401 ? 'Requires Login' : 'Ready'})`, 'success');
+    if (res.ok) {
+      const data = await res.json();
+      showAlert(`Connected to ${testUrl} (${data.authenticated ? 'Authenticated as ' + data.email : 'Ready - Not Logged In'})`, 'success');
     } else {
       showAlert(`Server returned status ${res.status}`, 'error');
     }
@@ -452,6 +621,14 @@ async function handleTestConnection() {
 }
 
 // Event Listeners
+if (formLogin) {
+  formLogin.addEventListener('submit', handleLogin);
+}
+
+if (btnSignOut) {
+  btnSignOut.addEventListener('click', handleSignOut);
+}
+
 btnClockIn.addEventListener('click', handleClockIn);
 btnStartBreak.addEventListener('click', handleStartBreak);
 btnEndBreak.addEventListener('click', handleEndBreak);
@@ -495,6 +672,15 @@ if (btnCheckApproval) {
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== 'local') return;
 
+  if (changes.authToken) {
+    authToken = changes.authToken.newValue || '';
+    isAuthenticated = Boolean(authToken);
+    renderUI();
+  }
+  if (changes.userProfile) {
+    employeeProfile = changes.userProfile.newValue || null;
+    renderUI();
+  }
   if (changes.sessionStatus) {
     currentStatus = changes.sessionStatus.newValue || 'offline';
     renderUI();
@@ -516,4 +702,3 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 
 // Initial boot
 loadState();
-

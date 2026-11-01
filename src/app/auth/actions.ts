@@ -2,10 +2,15 @@
 
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { resolveUserSystemRole } from '@/lib/auth-rbac'
 
 export async function login(formData: FormData) {
-  const usernameOrEmail = (formData.get('username') as string || formData.get('email') as string || '').trim()
-  const password = (formData.get('password') as string || '').trim()
+  const usernameOrEmail = (
+    (formData.get('username') as string) ||
+    (formData.get('email') as string) ||
+    ''
+  ).trim()
+  const password = ((formData.get('password') as string) || '').trim()
 
   if (!usernameOrEmail || !password) {
     return { error: 'Username/Email and password are required' }
@@ -17,8 +22,10 @@ export async function login(formData: FormData) {
   try {
     // If not an email format, resolve username to email via RPC or profile lookup
     if (!usernameOrEmail.includes('@')) {
-      const { data: resolvedEmail, error: rpcErr } = await supabase
-        .rpc('get_email_by_username', { p_username: usernameOrEmail })
+      const { data: resolvedEmail, error: rpcErr } = await supabase.rpc(
+        'get_email_by_username',
+        { p_username: usernameOrEmail }
+      )
 
       if (!rpcErr && resolvedEmail) {
         targetEmail = resolvedEmail
@@ -47,25 +54,25 @@ export async function login(formData: FormData) {
       return { error: authError?.message || 'Invalid username or password' }
     }
 
-    // Check membership role for redirection
-    const { data: membership } = await supabase
-      .from('organization_members')
-      .select('role, approval_status')
-      .eq('user_id', authData.user.id)
-      .limit(1)
-      .maybeSingle()
+    // Role-based routing
+    const { role } = await resolveUserSystemRole(supabase, authData.user)
 
-    const role = membership?.role
-    const isManagerRole = role && ['owner', 'admin', 'manager'].includes(role)
-
-    if (isManagerRole) {
+    if (role === 'super_admin') {
+      redirect('/admin/dashboard')
+    } else if (role === 'manager') {
       redirect('/dashboard')
     } else {
       redirect('/install')
     }
   } catch (err: unknown) {
     // Re-throw redirect so Next.js navigates properly
-    if (err && typeof err === 'object' && 'digest' in err && typeof (err as { digest: string }).digest === 'string' && (err as { digest: string }).digest.startsWith('NEXT_REDIRECT')) {
+    if (
+      err &&
+      typeof err === 'object' &&
+      'digest' in err &&
+      typeof (err as { digest: string }).digest === 'string' &&
+      (err as { digest: string }).digest.startsWith('NEXT_REDIRECT')
+    ) {
       throw err
     }
     console.error('SUPABASE AUTH ERROR:', err)
@@ -76,41 +83,131 @@ export async function login(formData: FormData) {
 }
 
 export async function register(formData: FormData) {
-  const firstName = (formData.get('firstName') as string || '').trim()
-  const lastName = (formData.get('lastName') as string || '').trim()
-  const email = (formData.get('email') as string || '').trim()
-  const username = (formData.get('username') as string || '').trim().toLowerCase()
-  const password = (formData.get('password') as string || '').trim()
-  const teamCode = (formData.get('teamCode') as string || '').trim().toUpperCase()
+  const firstName = ((formData.get('firstName') as string) || '').trim()
+  const lastName = ((formData.get('lastName') as string) || '').trim()
+  const email = ((formData.get('email') as string) || '').trim()
+  const username = ((formData.get('username') as string) || '').trim().toLowerCase()
+  const password = ((formData.get('password') as string) || '').trim()
+  const teamCode = ((formData.get('teamCode') as string) || '').trim().toUpperCase()
 
-  if (!firstName || !lastName || !email || !username || !password || !teamCode) {
-    return { error: 'All fields are required' }
+  if (!email || !password) {
+    return { error: 'Email and password are required' }
   }
 
   if (password.length < 6) {
     return { error: 'Password must be at least 6 characters' }
   }
 
+  const fullName = `${firstName} ${lastName}`.trim() || email.split('@')[0]
+  const cleanUsername = username || email.split('@')[0].toLowerCase().replace(/[^a-z0-9._-]/g, '')
+
   const supabase = await createClient()
 
   try {
-    // 1. Validate Secret Team Code
+    // 1. Detect if this user matches a pre-approved Manager profile slot
+    const { data: preApprovedManager } = await supabase
+      .from('profiles')
+      .select('id, email, username, full_name, role, approval_status')
+      .or(`email.ilike.${email},username.ilike.${cleanUsername}`)
+      .eq('role', 'manager')
+      .eq('approval_status', 'approved')
+      .maybeSingle()
+
+    if (preApprovedManager) {
+      // Create user auth account with the manager's chosen password
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: fullName || preApprovedManager.full_name,
+            username: cleanUsername || preApprovedManager.username,
+            role: 'manager',
+            approval_status: 'approved',
+          },
+        },
+      })
+
+      if (signUpError || !signUpData.user) {
+        return { error: signUpError?.message || 'Failed to create manager authentication account.' }
+      }
+
+      const newUserId = signUpData.user.id
+
+      // Claim the pre-approved profile slot
+      const { error: claimErr } = await supabase.rpc('claim_preapproved_manager', {
+        p_preapproved_id: preApprovedManager.id,
+        p_new_user_id: newUserId,
+        p_email: email,
+        p_full_name: fullName || preApprovedManager.full_name,
+        p_username: cleanUsername || preApprovedManager.username,
+      })
+
+      // Fallback in case RPC is not yet applied
+      if (claimErr) {
+        await supabase.from('profiles').upsert(
+          {
+            id: newUserId,
+            email,
+            full_name: fullName || preApprovedManager.full_name,
+            username: cleanUsername || preApprovedManager.username,
+            role: 'manager',
+            approval_status: 'approved',
+          },
+          { onConflict: 'id' }
+        )
+
+        if (preApprovedManager.id !== newUserId) {
+          await supabase
+            .from('organization_members')
+            .update({ user_id: newUserId })
+            .eq('user_id', preApprovedManager.id)
+
+          await supabase
+            .from('manager_notifications')
+            .update({ manager_id: newUserId })
+            .eq('manager_id', preApprovedManager.id)
+
+          await supabase
+            .from('daily_reports')
+            .update({ manager_id: newUserId })
+            .eq('manager_id', preApprovedManager.id)
+
+          await supabase
+            .from('profiles')
+            .delete()
+            .eq('id', preApprovedManager.id)
+        }
+      }
+
+      redirect('/dashboard')
+    }
+
+    // 2. Joining with Team Code (Employee onboarding)
+    if (!teamCode) {
+      return { error: 'Please enter a Secret Team Code to join your team.' }
+    }
+
     let orgId: string | null = null
-    const { data: verifiedOrg, error: verifyErr } = await supabase
-      .rpc('verify_team_code', { p_team_code: teamCode })
+    let requireApproval = true
 
-    if (!verifyErr && Array.isArray(verifiedOrg) && verifiedOrg.length > 0) {
-      orgId = verifiedOrg[0].organization_id
+    // Verify team code
+    const { data: orgData } = await supabase
+      .from('organizations')
+      .select('id, name, require_approval')
+      .ilike('team_code', teamCode)
+      .maybeSingle()
+
+    if (orgData?.id) {
+      orgId = orgData.id
+      requireApproval = orgData.require_approval ?? true
     } else {
-      // Fallback direct query if RPC not yet created
-      const { data: org } = await supabase
-        .from('organizations')
-        .select('id, name')
-        .ilike('team_code', teamCode)
-        .maybeSingle()
-
-      if (org?.id) {
-        orgId = org.id
+      const { data: verifiedOrg, error: verifyErr } = await supabase.rpc(
+        'verify_team_code',
+        { p_team_code: teamCode }
+      )
+      if (!verifyErr && Array.isArray(verifiedOrg) && verifiedOrg.length > 0) {
+        orgId = verifiedOrg[0].organization_id
       }
     }
 
@@ -118,16 +215,18 @@ export async function register(formData: FormData) {
       return { error: 'Invalid Team Secret Code. Please verify with your manager.' }
     }
 
-    // 2. Create user with approval_status: 'pending' in metadata
-    const fullName = `${firstName} ${lastName}`.trim()
+    const initialStatus = requireApproval ? 'pending' : 'approved'
+
+    // Create user
     const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: {
           full_name: fullName,
-          username,
-          approval_status: 'pending',
+          username: cleanUsername,
+          approval_status: initialStatus,
+          role: 'employee',
         },
       },
     })
@@ -138,35 +237,37 @@ export async function register(formData: FormData) {
 
     const userId = signUpData.user.id
 
-    // 3. Link user to organization with approval_status: 'pending' and role: 'employee'
-    const { error: joinRpcError } = await supabase
-      .rpc('join_org_by_team_code', {
-        p_user_id: userId,
-        p_team_code: teamCode,
-      })
+    // Link user to organization
+    const { error: joinRpcError } = await supabase.rpc('join_org_by_team_code', {
+      p_user_id: userId,
+      p_team_code: teamCode,
+    })
 
     if (joinRpcError) {
-      // Direct insertion fallback
-      await supabase
-        .from('organization_members')
-        .upsert(
-          {
-            organization_id: orgId,
-            user_id: userId,
-            role: 'employee',
-            approval_status: 'pending',
-          },
-          { onConflict: 'organization_id,user_id' }
-        )
+      await supabase.from('organization_members').upsert(
+        {
+          organization_id: orgId,
+          user_id: userId,
+          role: 'employee',
+          approval_status: initialStatus,
+        },
+        { onConflict: 'organization_id,user_id' }
+      )
       await supabase
         .from('profiles')
-        .update({ username, approval_status: 'pending' })
+        .update({ username: cleanUsername, approval_status: initialStatus })
         .eq('id', userId)
     }
 
-    redirect('/install?registered=true')
+    redirect(initialStatus === 'approved' ? '/install?status=approved' : '/install?registered=true')
   } catch (err: unknown) {
-    if (err && typeof err === 'object' && 'digest' in err && typeof (err as { digest: string }).digest === 'string' && (err as { digest: string }).digest.startsWith('NEXT_REDIRECT')) {
+    if (
+      err &&
+      typeof err === 'object' &&
+      'digest' in err &&
+      typeof (err as { digest: string }).digest === 'string' &&
+      (err as { digest: string }).digest.startsWith('NEXT_REDIRECT')
+    ) {
       throw err
     }
     console.error('REGISTRATION ERROR:', err)

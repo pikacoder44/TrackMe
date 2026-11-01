@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createMiddlewareClient } from '@/lib/supabase/middleware'
+import { getRoleHome, resolveUserSystemRole } from '@/lib/auth-rbac'
 
 const ALLOWED_ORIGIN = 'http://localhost:5173'
 
@@ -26,6 +27,7 @@ export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname
   const isApi = pathname.startsWith('/api/')
 
+  // Handle CORS for API routes
   if (isApi) {
     const corsHeaders = getCorsHeaders(request.headers.get('origin'))
 
@@ -43,26 +45,42 @@ export async function proxy(request: NextRequest) {
     return response
   }
 
+  // Consolidate legacy /signup into /register
+  if (pathname === '/signup') {
+    return NextResponse.redirect(new URL('/register', request.url))
+  }
+
   const { supabaseResponse, supabase, user } = await createMiddlewareClient(request)
 
-  // RBAC Middleware: Restrict /dashboard strictly to users with roles owner, admin, or manager
+  // Redirect logged-in users visiting /login or /register to their designated role portal
+  if (user && (pathname === '/login' || pathname === '/register')) {
+    const { role } = await resolveUserSystemRole(supabase, user)
+    const destination = getRoleHome(role)
+    return NextResponse.redirect(new URL(destination, request.url))
+  }
+
+  // Super Admin Portal RBAC: /admin or /admin/* restricted strictly to super_admin
+  if (pathname.startsWith('/admin')) {
+    if (!user) {
+      return NextResponse.redirect(new URL('/login', request.url))
+    }
+
+    const { role } = await resolveUserSystemRole(supabase, user)
+    if (role !== 'super_admin') {
+      const destination = getRoleHome(role)
+      return NextResponse.redirect(new URL(destination, request.url))
+    }
+  }
+
+  // Manager Portal RBAC: /dashboard restricted strictly to manager/super_admin roles
   if (pathname.startsWith('/dashboard')) {
     if (!user) {
       return NextResponse.redirect(new URL('/login', request.url))
     }
 
-    const { data: membership } = await supabase
-      .from('organization_members')
-      .select('role, approval_status')
-      .eq('user_id', user.id)
-      .limit(1)
-      .maybeSingle()
-
-    const role = membership?.role
-    const isManagerRole = role && ['owner', 'admin', 'manager'].includes(role)
-
-    // If regular employee attempts to visit /dashboard, redirect to /install
-    if (!isManagerRole) {
+    const { role } = await resolveUserSystemRole(supabase, user)
+    // If employee attempts to visit /dashboard, redirect to /install
+    if (role === 'employee') {
       return NextResponse.redirect(new URL('/install', request.url))
     }
   }
@@ -76,4 +94,3 @@ export const config = {
     '/((?!_next/static|_next/image|favicon\\.ico|sitemap\\.xml|robots\\.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js)$).*)',
   ],
 }
-

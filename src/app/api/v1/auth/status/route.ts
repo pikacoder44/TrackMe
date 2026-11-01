@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { resolveUserSystemRole } from '@/lib/auth-rbac'
 
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204 })
@@ -21,22 +22,35 @@ export async function GET() {
       return NextResponse.json({ authenticated: false }, { status: 200 })
     }
 
-    const { data: membership } = await supabase
-      .from('organization_members')
-      .select('organization_id, role, approval_status')
-      .eq('user_id', user.id)
-      .limit(1)
-      .maybeSingle()
+    const [roleData, profileResult, memberResult] = await Promise.all([
+      resolveUserSystemRole(supabase, user),
+      supabase
+        .from('profiles')
+        .select('full_name, email, username')
+        .eq('id', user.id)
+        .maybeSingle(),
+      supabase
+        .from('organization_members')
+        .select('organization_id, role, approval_status, organization:organizations(name)')
+        .eq('user_id', user.id)
+        .limit(1)
+        .maybeSingle(),
+    ])
 
-    const approvalStatus = membership?.approval_status || 'approved'
+    const profile = profileResult.data
+    const member = memberResult.data
+    const orgName = (member?.organization as unknown as { name?: string })?.name || null
 
     return NextResponse.json({
       authenticated: true,
       userId: user.id,
       email: user.email,
-      organizationId: membership?.organization_id || null,
-      role: membership?.role || 'employee',
-      approvalStatus,
+      fullName: profile?.full_name || user.email?.split('@')[0],
+      username: profile?.username || null,
+      organizationId: roleData.organizationId || member?.organization_id || null,
+      organizationName: orgName,
+      role: roleData.role,
+      approvalStatus: roleData.approvalStatus,
     })
   } catch (err: unknown) {
     return NextResponse.json(
