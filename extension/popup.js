@@ -16,6 +16,7 @@ let organizationId = null;
 let serverUrl = DEFAULT_SERVER_URL;
 let authToken = '';
 let timerInterval = null;
+let approvalStatus = 'approved';
 
 // DOM Elements
 const statusBadge = document.getElementById('status-badge');
@@ -27,6 +28,8 @@ const activityBox = document.getElementById('activity-box');
 const activityApp = document.getElementById('activity-app');
 const activityTitle = document.getElementById('activity-title');
 
+const viewPending = document.getElementById('view-pending');
+const btnCheckApproval = document.getElementById('btn-check-approval');
 const viewClockedOut = document.getElementById('view-clocked-out');
 const viewActive = document.getElementById('view-active');
 const viewBreak = document.getElementById('view-break');
@@ -106,6 +109,24 @@ function renderUI() {
   // Reset classes
   statusBadge.className = 'status-badge';
 
+  if (approvalStatus === 'pending') {
+    statusBadge.classList.add('status-pending');
+    statusText.textContent = 'Pending Approval';
+    sessionTimeLabel.textContent = 'Account Locked';
+
+    viewPending.classList.remove('hidden');
+    viewClockedOut.classList.add('hidden');
+    viewActive.classList.add('hidden');
+    viewBreak.classList.add('hidden');
+    activityBox.classList.add('hidden');
+
+    stopTimer();
+    timerValue.textContent = '00:00:00';
+    return;
+  }
+
+  viewPending.classList.add('hidden');
+
   if (currentStatus === 'active') {
     statusBadge.classList.add('status-active');
     statusText.textContent = 'Active Working';
@@ -160,6 +181,7 @@ async function loadState() {
     if (!response) return;
 
     currentStatus = response.sessionStatus || 'offline';
+    approvalStatus = response.approvalStatus || 'approved';
     sessionId = response.sessionId;
     organizationId = response.organizationId;
     sessionStartedAt = response.sessionStartedAt;
@@ -178,6 +200,16 @@ async function loadState() {
     }
 
     renderUI();
+
+    // Verify latest approval status asynchronously
+    chrome.runtime.sendMessage({ type: 'CHECK_APPROVAL' }, (checkRes) => {
+      if (checkRes && checkRes.success && checkRes.approvalStatus) {
+        if (approvalStatus !== checkRes.approvalStatus) {
+          approvalStatus = checkRes.approvalStatus;
+          renderUI();
+        }
+      }
+    });
   });
 }
 
@@ -198,6 +230,12 @@ async function handleClockIn() {
         throw new Error(`Unauthorized. Please log in to TrackMe at ${serverUrl} or configure your auth token in settings.`);
       }
       const data = await res.json().catch(() => ({}));
+      if (res.status === 403 && data.approval_status === 'pending') {
+        approvalStatus = 'pending';
+        await chrome.storage.local.set({ approvalStatus: 'pending' });
+        renderUI();
+        throw new Error('Account Pending Manager Approval. Your manager must approve your access before you can clock in.');
+      }
       throw new Error(data.error || `Server responded with ${res.status}`);
     }
 
@@ -429,12 +467,40 @@ btnTestConnection.addEventListener('click', handleTestConnection);
 btnCloseAlert.addEventListener('click', () => alertBanner.classList.add('hidden'));
 btnSyncNow.addEventListener('click', handleSyncNow);
 
+if (btnCheckApproval) {
+  btnCheckApproval.addEventListener('click', () => {
+    btnCheckApproval.disabled = true;
+    btnCheckApproval.textContent = 'Checking Status...';
+    chrome.runtime.sendMessage({ type: 'CHECK_APPROVAL' }, (res) => {
+      btnCheckApproval.disabled = false;
+      btnCheckApproval.textContent = 'Check Approval Status';
+      if (res && res.success) {
+        approvalStatus = res.approvalStatus;
+        renderUI();
+        if (approvalStatus === 'approved') {
+          showAlert('Account approved! Controls unlocked.', 'success');
+        } else if (approvalStatus === 'pending') {
+          showAlert('Account still pending manager approval.', 'warning');
+        } else if (approvalStatus === 'rejected') {
+          showAlert('Account access rejected.', 'error');
+        }
+      } else {
+        showAlert(res?.error || 'Could not verify status with server.', 'error');
+      }
+    });
+  });
+}
+
 // Storage change listener to keep UI synchronized across tabs/windows
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== 'local') return;
 
   if (changes.sessionStatus) {
     currentStatus = changes.sessionStatus.newValue || 'offline';
+    renderUI();
+  }
+  if (changes.approvalStatus) {
+    approvalStatus = changes.approvalStatus.newValue || 'approved';
     renderUI();
   }
   if (changes.eventQueue) {
@@ -450,3 +516,4 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 
 // Initial boot
 loadState();
+

@@ -23,37 +23,68 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center p-4 bg-muted/30">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
+      <Card className="w-full max-w-sm shadow-lg border-border/60">
+        <CardHeader className="space-y-1">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="h-7 w-7 rounded-lg bg-primary text-primary-foreground flex items-center justify-center font-bold text-sm">
+              T
+            </div>
+            <span className="font-semibold text-lg tracking-tight">TrackMe</span>
+          </div>
           <CardTitle className="text-xl">Sign in to TrackMe</CardTitle>
-          <CardDescription>Enter your credentials to access your dashboard</CardDescription>
+          <CardDescription>Enter your username and password to continue</CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
             {error && (
-              <div className="text-sm font-medium text-destructive bg-destructive/10 p-2.5 rounded-md">
+              <div className="text-sm font-medium text-destructive bg-destructive/10 p-2.5 rounded-md border border-destructive/20">
                 {error}
               </div>
             )}
             <div className="space-y-1.5">
-              <label htmlFor="email" className="text-sm font-medium leading-none">Email</label>
-              <Input id="email" name="email" type="email" placeholder="name@company.com" required />
+              <label htmlFor="username" className="text-sm font-medium leading-none">
+                Username
+              </label>
+              <Input
+                id="username"
+                name="username"
+                type="text"
+                autoCapitalize="none"
+                autoCorrect="off"
+                placeholder="e.g. alex.chen"
+                required
+              />
             </div>
             <div className="space-y-1.5">
-              <label htmlFor="password" className="text-sm font-medium leading-none">Password</label>
-              <Input id="password" name="password" type="password" required />
+              <label htmlFor="password" className="text-sm font-medium leading-none">
+                Password
+              </label>
+              <Input
+                id="password"
+                name="password"
+                type="password"
+                placeholder="••••••••"
+                required
+              />
             </div>
           </CardContent>
-          <CardFooter className="flex flex-col gap-3">
+          <CardFooter className="flex flex-col gap-3 pt-2">
             <Button type="submit" className="w-full" disabled={isPending}>
               {isPending ? 'Signing in...' : 'Sign In'}
             </Button>
-            <p className="text-xs text-muted-foreground text-center">
-              Don&apos;t have an account?{' '}
-              <Link href="/signup" className="text-primary underline-offset-4 hover:underline">
-                Sign up
-              </Link>
-            </p>
+            <div className="text-xs text-muted-foreground text-center space-y-1">
+              <p>
+                Need to join a team?{' '}
+                <Link href="/register" className="text-primary font-medium underline-offset-4 hover:underline">
+                  Register with Team Code
+                </Link>
+              </p>
+              <p>
+                <Link href="/" className="text-muted-foreground hover:text-foreground">
+                  ← Back to Home
+                </Link>
+              </p>
+            </div>
           </CardFooter>
         </form>
       </Card>

@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { updateSession } from '@/lib/supabase/middleware'
+import { createMiddlewareClient } from '@/lib/supabase/middleware'
 
 const ALLOWED_ORIGIN = 'http://localhost:5173'
 
@@ -23,7 +23,8 @@ function getCorsHeaders(origin: string | null) {
 }
 
 export async function proxy(request: NextRequest) {
-  const isApi = request.nextUrl.pathname.startsWith('/api/')
+  const pathname = request.nextUrl.pathname
+  const isApi = pathname.startsWith('/api/')
 
   if (isApi) {
     const corsHeaders = getCorsHeaders(request.headers.get('origin'))
@@ -42,7 +43,31 @@ export async function proxy(request: NextRequest) {
     return response
   }
 
-  return await updateSession(request)
+  const { supabaseResponse, supabase, user } = await createMiddlewareClient(request)
+
+  // RBAC Middleware: Restrict /dashboard strictly to users with roles owner, admin, or manager
+  if (pathname.startsWith('/dashboard')) {
+    if (!user) {
+      return NextResponse.redirect(new URL('/login', request.url))
+    }
+
+    const { data: membership } = await supabase
+      .from('organization_members')
+      .select('role, approval_status')
+      .eq('user_id', user.id)
+      .limit(1)
+      .maybeSingle()
+
+    const role = membership?.role
+    const isManagerRole = role && ['owner', 'admin', 'manager'].includes(role)
+
+    // If regular employee attempts to visit /dashboard, redirect to /install
+    if (!isManagerRole) {
+      return NextResponse.redirect(new URL('/install', request.url))
+    }
+  }
+
+  return supabaseResponse
 }
 
 export const config = {

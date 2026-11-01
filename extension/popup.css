@@ -284,6 +284,38 @@ body {
   background: var(--warning);
 }
 
+.status-pending {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+.status-pending .status-dot {
+  background: #f59e0b;
+}
+
+.pending-card {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  width: 100%;
+}
+.pending-card-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #fbbf24;
+}
+.pending-card-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
 .session-label {
   font-size: 11px;
   color: var(--text-dim);

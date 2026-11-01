@@ -82,6 +82,17 @@
 
       <!-- Primary Action Buttons -->
       <div class="actions-container">
+        <!-- Pending Manager Approval View -->
+        <div id="view-pending" class="pending-card hidden">
+          <div class="pending-card-title">Account Pending Manager Approval</div>
+          <div class="pending-card-desc">
+            Your Secret Team Code was registered. Your manager must approve your account in the supervisory dashboard before time tracking unlocks.
+          </div>
+          <button id="btn-check-approval" class="btn btn-secondary btn-sm" style="margin-top: 4px;">
+            Check Approval Status
+          </button>
+        </div>
+
         <!-- Clocked Out View -->
         <div id="view-clocked-out" class="button-group">
           <button id="btn-clock-in" class="btn btn-primary btn-lg">

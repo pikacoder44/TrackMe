@@ -350,6 +350,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type === 'GET_STATUS') {
     getStorage([
       'sessionStatus',
+      'approvalStatus',
       'sessionId',
       'organizationId',
       'sessionStartedAt',
@@ -363,6 +364,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     ]).then((data) => {
       sendResponse({
         sessionStatus: data.sessionStatus || 'offline',
+        approvalStatus: data.approvalStatus || 'approved',
         sessionId: data.sessionId || null,
         organizationId: data.organizationId || null,
         sessionStartedAt: data.sessionStartedAt || null,
@@ -375,6 +377,38 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     });
     return true; // asynchronous response
+  }
+
+  if (request.type === 'CHECK_APPROVAL') {
+    (async () => {
+      const storage = await getStorage(['serverUrl', 'authToken']);
+      const sUrl = storage.serverUrl || DEFAULT_SERVER_URL;
+      const headers = { 'Content-Type': 'application/json' };
+      if (storage.authToken) {
+        headers['Authorization'] = `Bearer ${storage.authToken}`;
+      }
+      try {
+        const res = await fetch(`${sUrl}/api/v1/auth/status`, {
+          method: 'GET',
+          headers,
+          credentials: 'include'
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const approvalStatus = data.approvalStatus || (data.authenticated ? 'approved' : 'unknown');
+          await setStorage({
+            approvalStatus,
+            organizationId: data.organizationId || null
+          });
+          sendResponse({ success: true, approvalStatus, authenticated: data.authenticated });
+        } else {
+          sendResponse({ success: false, error: `Server responded with ${res.status}` });
+        }
+      } catch (err) {
+        sendResponse({ success: false, error: err.message });
+      }
+    })();
+    return true;
   }
 
   if (request.type === 'SYNC_NOW') {

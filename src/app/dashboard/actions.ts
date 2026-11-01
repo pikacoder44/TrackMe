@@ -147,3 +147,88 @@ export async function logManualTimeEntry(formData: FormData) {
   revalidatePath('/dashboard/timesheets', 'page')
   return { success: true }
 }
+
+export async function approveEmployee(memberId: string) {
+  const { supabase, user } = await getAuthenticatedUser()
+
+  const { data: targetMember, error: fetchError } = await supabase
+    .from('organization_members')
+    .select('id, user_id, organization_id')
+    .eq('id', memberId)
+    .single()
+
+  if (fetchError || !targetMember) {
+    return { error: 'Employee member record not found' }
+  }
+
+  const { data: callerMember } = await supabase
+    .from('organization_members')
+    .select('role')
+    .eq('organization_id', targetMember.organization_id)
+    .eq('user_id', user.id)
+    .single()
+
+  if (!callerMember || !['owner', 'admin', 'manager'].includes(callerMember.role)) {
+    return { error: 'Unauthorized: manager permissions required' }
+  }
+
+  const [updateMemberRes, updateProfileRes] = await Promise.all([
+    supabase
+      .from('organization_members')
+      .update({ approval_status: 'approved', updated_at: new Date().toISOString() })
+      .eq('id', memberId),
+    supabase
+      .from('profiles')
+      .update({ approval_status: 'approved', updated_at: new Date().toISOString() })
+      .eq('id', targetMember.user_id),
+  ])
+
+  if (updateMemberRes.error) return { error: updateMemberRes.error.message }
+  if (updateProfileRes.error) return { error: updateProfileRes.error.message }
+
+  revalidatePath('/dashboard', 'page')
+  return { success: true }
+}
+
+export async function rejectEmployee(memberId: string) {
+  const { supabase, user } = await getAuthenticatedUser()
+
+  const { data: targetMember, error: fetchError } = await supabase
+    .from('organization_members')
+    .select('id, user_id, organization_id')
+    .eq('id', memberId)
+    .single()
+
+  if (fetchError || !targetMember) {
+    return { error: 'Employee member record not found' }
+  }
+
+  const { data: callerMember } = await supabase
+    .from('organization_members')
+    .select('role')
+    .eq('organization_id', targetMember.organization_id)
+    .eq('user_id', user.id)
+    .single()
+
+  if (!callerMember || !['owner', 'admin', 'manager'].includes(callerMember.role)) {
+    return { error: 'Unauthorized: manager permissions required' }
+  }
+
+  const [updateMemberRes, updateProfileRes] = await Promise.all([
+    supabase
+      .from('organization_members')
+      .update({ approval_status: 'rejected', updated_at: new Date().toISOString() })
+      .eq('id', memberId),
+    supabase
+      .from('profiles')
+      .update({ approval_status: 'rejected', updated_at: new Date().toISOString() })
+      .eq('id', targetMember.user_id),
+  ])
+
+  if (updateMemberRes.error) return { error: updateMemberRes.error.message }
+  if (updateProfileRes.error) return { error: updateProfileRes.error.message }
+
+  revalidatePath('/dashboard', 'page')
+  return { success: true }
+}
+

@@ -6,11 +6,15 @@ import {
   type ManagerActivityEvent,
 } from './dashboard-client'
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { PendingApprovals, type PendingMember } from '@/components/dashboard/pending-approvals'
 
 interface MemberWithProfile {
+  id: string
   user_id: string
   role: string
-  profile: { full_name: string | null; email: string } | null
+  approval_status?: string | null
+  created_at?: string
+  profile: { full_name: string | null; email: string; username?: string | null } | null
 }
 
 interface WorkSession {
@@ -63,7 +67,7 @@ export default async function DashboardPage() {
   const [membersResult, sessionsResult, eventsResult] = await Promise.all([
     supabase
       .from('organization_members')
-      .select('user_id, role, profile:profiles(full_name, email)')
+      .select('id, user_id, role, approval_status, created_at, profile:profiles(full_name, email, username)')
       .eq('organization_id', orgId),
     supabase
       .from('work_sessions')
@@ -78,8 +82,23 @@ export default async function DashboardPage() {
       .order('recorded_at', { ascending: false }),
   ])
 
-  const members = (membersResult.data as unknown as MemberWithProfile[]) ?? []
+  const allMembers = (membersResult.data as unknown as MemberWithProfile[]) ?? []
   const activeSessions = (sessionsResult.data as WorkSession[]) ?? []
+
+  // Pending members awaiting manager approval
+  const pendingMembers: PendingMember[] = allMembers
+    .filter((m) => m.approval_status === 'pending')
+    .map((m) => ({
+      id: m.id,
+      userId: m.user_id,
+      fullName: m.profile?.full_name ?? m.profile?.email?.split('@')[0] ?? 'Unknown',
+      username: m.profile?.username ?? m.profile?.email?.split('@')[0] ?? 'unknown',
+      email: m.profile?.email ?? '',
+      createdAt: m.created_at ?? new Date().toISOString(),
+    }))
+
+  // Only approved members appear in live telemetry status list
+  const approvedMembers = allMembers.filter((m) => m.approval_status !== 'pending' && m.approval_status !== 'rejected')
 
   // Extract raw activity events with payload fallback for schema resilience
   const rawEvents: ManagerActivityEvent[] = (eventsResult.data ?? []).map((e: {
@@ -121,7 +140,7 @@ export default async function DashboardPage() {
   }
 
   // Build employee status list
-  const employeeStatuses: EmployeeStatus[] = members.map((m) => {
+  const employeeStatuses: EmployeeStatus[] = approvedMembers.map((m) => {
     const session = sessionByUser.get(m.user_id)
     const latestEvent = latestEventByUser.get(m.user_id)
     const status = session
@@ -143,13 +162,18 @@ export default async function DashboardPage() {
     }
   })
 
+  const isManager = ['owner', 'admin', 'manager'].includes(membership.role)
+
   return (
-    <TeamDashboardClient
-      organizationName={orgName}
-      organizationId={orgId}
-      employeeStatuses={employeeStatuses}
-      rawEvents={rawEvents}
-      currentUserRole={membership.role}
-    />
+    <div className="space-y-6">
+      {isManager && <PendingApprovals pendingMembers={pendingMembers} />}
+      <TeamDashboardClient
+        organizationName={orgName}
+        organizationId={orgId}
+        employeeStatuses={employeeStatuses}
+        rawEvents={rawEvents}
+        currentUserRole={membership.role}
+      />
+    </div>
   )
 }

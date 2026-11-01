@@ -24,13 +24,33 @@ export async function POST() {
     // Fetch first org membership
     const { data: membership, error: memberError } = await supabase
       .from('organization_members')
-      .select('organization_id')
+      .select('organization_id, approval_status')
       .eq('user_id', user.id)
       .limit(1)
       .maybeSingle()
 
     if (memberError || !membership) {
       return NextResponse.json({ error: 'No organization membership found' }, { status: 403 })
+    }
+
+    if (membership.approval_status === 'pending') {
+      return NextResponse.json(
+        {
+          error: 'Account Pending Manager Approval. Your manager must approve your access before you can clock in.',
+          approval_status: 'pending',
+        },
+        { status: 403 }
+      )
+    }
+
+    if (membership.approval_status === 'rejected') {
+      return NextResponse.json(
+        {
+          error: 'Account access was rejected by your organization manager.',
+          approval_status: 'rejected',
+        },
+        { status: 403 }
+      )
     }
 
     const organizationId = membership.organization_id
