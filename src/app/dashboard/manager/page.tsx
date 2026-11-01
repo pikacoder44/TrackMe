@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { ManagerDashboardClient } from './manager-client'
+import { ManagerDashboardClient, type ManagerActivityEvent } from './manager-client'
 
 interface MemberWithProfile {
   user_id: string
@@ -13,15 +13,6 @@ interface WorkSession {
   user_id: string
   status: string
   started_at: string
-}
-
-interface ActivityEvent {
-  user_id: string
-  session_id: string
-  event_type: string
-  window_title: string | null
-  app_name: string | null
-  recorded_at: string
 }
 
 export interface EmployeeStatus {
@@ -58,7 +49,7 @@ export default async function ManagerPage() {
   // RBAC: only owner/admin/manager may access this page
   const { data: membership } = await supabase
     .from('organization_members')
-    .select('role, organization_id')
+    .select('role, organization_id, organization:organizations(id, name)')
     .eq('user_id', user.id)
     .maybeSingle()
 
@@ -68,8 +59,11 @@ export default async function ManagerPage() {
   }
 
   const orgId = membership.organization_id
+  const orgName =
+    (membership.organization as unknown as { id: string; name: string } | null)?.name ??
+    'Organization'
 
-  // Fetch team data concurrently
+  // Fetch team data concurrently for the last 8 hours
   // eslint-disable-next-line react-hooks/purity
   const eightHoursAgo = new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString()
   const [membersResult, sessionsResult, eventsResult] = await Promise.all([
@@ -84,7 +78,7 @@ export default async function ManagerPage() {
       .in('status', ['active', 'paused']),
     supabase
       .from('activity_events')
-      .select('user_id, session_id, event_type, window_title, app_name, recorded_at')
+      .select('id, user_id, session_id, event_type, window_title, app_name, recorded_at, payload')
       .eq('organization_id', orgId)
       .gte('recorded_at', eightHoursAgo)
       .order('recorded_at', { ascending: false }),
@@ -92,16 +86,42 @@ export default async function ManagerPage() {
 
   const members = (membersResult.data as unknown as MemberWithProfile[]) ?? []
   const activeSessions = (sessionsResult.data as WorkSession[]) ?? []
-  const recentEvents = (eventsResult.data as ActivityEvent[]) ?? []
+
+  // Extract raw activity events with payload fallback for schema resilience
+  const rawEvents: ManagerActivityEvent[] = (eventsResult.data ?? []).map((e: {
+    id: string
+    user_id: string
+    session_id: string
+    event_type: string
+    window_title: string | null
+    app_name: string | null
+    recorded_at: string
+    payload: Record<string, unknown> | null
+  }) => {
+    const payload = typeof e.payload === 'object' && e.payload !== null ? e.payload : {}
+    const appName = e.app_name || (payload.app_name as string) || 'Web Browser'
+    const windowTitle = e.window_title || (payload.window_title as string) || null
+    return {
+      id: e.id,
+      userId: e.user_id,
+      sessionId: e.session_id,
+      eventType: e.event_type,
+      windowTitle,
+      appName,
+      recordedAt: e.recorded_at,
+    }
+  })
 
   // Build session map
   const sessionByUser = new Map<string, WorkSession>()
   for (const s of activeSessions) sessionByUser.set(s.user_id, s)
 
   // Latest event per user
-  const latestEventByUser = new Map<string, ActivityEvent>()
-  for (const e of recentEvents) {
-    if (!latestEventByUser.has(e.user_id)) latestEventByUser.set(e.user_id, e)
+  const latestEventByUser = new Map<string, ManagerActivityEvent>()
+  for (const e of rawEvents) {
+    if (!latestEventByUser.has(e.userId)) {
+      latestEventByUser.set(e.userId, e)
+    }
   }
 
   // Build employee status list
@@ -121,12 +141,12 @@ export default async function ManagerPage() {
       status,
       sessionId: session?.id ?? null,
       startedAt: session?.started_at ?? null,
-      lastWindow: latestEvent?.window_title ?? null,
-      lastApp: latestEvent?.app_name ?? null,
+      lastWindow: latestEvent?.windowTitle ?? null,
+      lastApp: latestEvent?.appName ?? null,
     }
   })
 
-  // Build activity summary per user (today)
+  // Build activity summary per user
   const summaryMap = new Map<string, ActivitySummary>()
   for (const m of members) {
     summaryMap.set(m.user_id, {
@@ -143,23 +163,23 @@ export default async function ManagerPage() {
 
   const appCountByUser = new Map<string, Map<string, number>>()
 
-  for (const e of recentEvents) {
-    const summary = summaryMap.get(e.user_id)
+  for (const e of rawEvents) {
+    const summary = summaryMap.get(e.userId)
     if (!summary) continue
 
-    if (e.event_type === 'active_tick') {
+    if (e.eventType === 'active_tick') {
       summary.activeCount++
-      summary.totalActiveSeconds += 10 // each tick represents 10s
-    } else if (e.event_type === 'idle_tick') {
+      summary.totalActiveSeconds += 15 // each tick represents 15s
+    } else if (e.eventType === 'idle_tick') {
       summary.idleCount++
-    } else if (e.event_type === 'break_start') {
-      summary.totalBreakSeconds += 0 // computed from paired events; simplified here
+    } else if (e.eventType === 'break_start') {
+      summary.totalBreakSeconds += 0
     }
 
-    if (e.app_name) {
-      if (!appCountByUser.has(e.user_id)) appCountByUser.set(e.user_id, new Map())
-      const apps = appCountByUser.get(e.user_id)!
-      apps.set(e.app_name, (apps.get(e.app_name) ?? 0) + 1)
+    if (e.appName) {
+      if (!appCountByUser.has(e.userId)) appCountByUser.set(e.userId, new Map())
+      const apps = appCountByUser.get(e.userId)!
+      apps.set(e.appName, (apps.get(e.appName) ?? 0) + 1)
     }
   }
 
@@ -176,8 +196,10 @@ export default async function ManagerPage() {
 
   return (
     <ManagerDashboardClient
+      organizationName={orgName}
       employeeStatuses={employeeStatuses}
       activitySummaries={activitySummaries}
+      rawEvents={rawEvents}
       currentUserRole={membership.role}
     />
   )

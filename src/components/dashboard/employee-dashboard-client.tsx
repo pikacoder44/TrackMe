@@ -1,8 +1,20 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { TimeTracker } from '@/components/dashboard/time-tracker'
-import { AppUsageTable, type AppUsageEntry } from '@/components/dashboard/app-usage-table'
+import { AppUsageTable } from '@/components/dashboard/app-usage-table'
+import { createClient } from '@/lib/supabase/client'
+import { aggregateEventsToAppUsage } from '@/lib/telemetry'
+
+export interface ActivityEventItem {
+  id: string
+  session_id?: string
+  event_type: string
+  window_title: string | null
+  app_name: string | null
+  recorded_at: string
+}
 
 interface Project {
   id: string
@@ -22,24 +34,43 @@ interface EmployeeDashboardClientProps {
   organizationId: string
   activeSession: ActiveSession | null
   projects: Project[]
+  initialEvents?: ActivityEventItem[]
 }
 
 export function EmployeeDashboardClient({
   organizationId,
   activeSession,
   projects,
+  initialEvents = [],
 }: EmployeeDashboardClientProps) {
-  const [usageEntries, setUsageEntries] = useState<AppUsageEntry[]>([])
-  const [activeSeconds, setActiveSeconds] = useState(0)
-  const [idleSeconds, setIdleSeconds] = useState(0)
+  const router = useRouter()
 
+  // Supabase Realtime: refresh dashboard when new telemetry events arrive from extension
+  useEffect(() => {
+    const supabase = createClient()
+    const channel = supabase
+      .channel('employee:activity_events')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'activity_events',
+          filter: `organization_id=eq.${organizationId}`,
+        },
+        () => {
+          router.refresh()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [organizationId, router])
+
+  const { entries, activeSeconds, idleSeconds } = aggregateEventsToAppUsage(initialEvents)
   const totalTracked = activeSeconds + idleSeconds
-
-  function handleUsageUpdate(entries: AppUsageEntry[], active: number, idle: number) {
-    setUsageEntries(entries)
-    setActiveSeconds(active)
-    setIdleSeconds(idle)
-  }
 
   return (
     <div className="space-y-6">
@@ -47,10 +78,9 @@ export function EmployeeDashboardClient({
         organizationId={organizationId}
         activeSession={activeSession}
         projects={projects}
-        onUsageUpdate={handleUsageUpdate}
       />
       <AppUsageTable
-        entries={usageEntries}
+        entries={entries}
         totalTrackedSeconds={totalTracked}
         activeSeconds={activeSeconds}
         idleSeconds={idleSeconds}

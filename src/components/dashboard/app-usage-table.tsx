@@ -63,11 +63,7 @@ const APP_ICONS: Record<string, string> = {
   Default: '🖥️',
 }
 
-function formatHHMM(seconds: number) {
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  return `${h}:${String(m).padStart(2, '0')}`
-}
+import { formatDurationHHMMSS } from '@/lib/telemetry'
 
 function getAppIcon(app: string) {
   return APP_ICONS[app] ?? APP_ICONS.Default
@@ -142,13 +138,13 @@ export function AppUsageTable({
           {[
             {
               label: 'Total Tracked',
-              value: formatHHMM(totalTrackedSeconds),
+              value: formatDurationHHMMSS(totalTrackedSeconds),
               icon: Clock,
               color: 'text-blue-500',
             },
             {
               label: 'Active Working',
-              value: formatHHMM(activeSeconds),
+              value: formatDurationHHMMSS(activeSeconds),
               icon: Activity,
               color: 'text-emerald-500',
             },
@@ -203,7 +199,7 @@ export function AppUsageTable({
             {filtered.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
                 <Monitor className="w-8 h-8 opacity-30" />
-                <p className="text-sm">No activity recorded yet for this session.</p>
+                <p className="text-sm">No activity recorded yet. Clock in via the TrackMe Firefox extension to start tracking.</p>
               </div>
             ) : (
               <div className="overflow-x-auto -mx-2">
@@ -253,10 +249,13 @@ export function AppUsageTable({
                           </td>
                           <td className="py-2.5 px-2 text-right">
                             <div className="flex items-center justify-end gap-1.5">
-                              <div className="w-14 bg-muted rounded-full h-1.5 hidden sm:block">
+                              <div className="w-14 bg-muted rounded-full h-1.5 hidden sm:block overflow-hidden">
                                 <div
-                                  className="bg-emerald-500 rounded-full h-1.5"
-                                  style={{ width: `${entry.activityPct}%` }}
+                                  className="rounded-full h-1.5 transition-all"
+                                  style={{
+                                    width: `${entry.activityPct}%`,
+                                    backgroundColor: BAR_COLORS[entry.productivity],
+                                  }}
                                 />
                               </div>
                               <span className="font-mono text-xs">{entry.activityPct}%</span>
@@ -266,7 +265,7 @@ export function AppUsageTable({
                             {entry.inactivePct}%
                           </td>
                           <td className="py-2.5 px-2 text-right font-mono font-semibold">
-                            {formatHHMM(entry.seconds)}
+                            {formatDurationHHMMSS(entry.seconds)}
                           </td>
                         </tr>
                       )
@@ -284,7 +283,7 @@ export function AppUsageTable({
             {chartData.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full gap-2 text-muted-foreground">
                 <Monitor className="w-8 h-8 opacity-30" />
-                <p className="text-sm">No data to chart yet.</p>
+                <p className="text-sm">No activity recorded yet. Clock in via the TrackMe Firefox extension to start tracking.</p>
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">

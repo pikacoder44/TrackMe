@@ -1,27 +1,12 @@
 'use client'
 
-import { useState, useEffect, useTransition, useOptimistic, useRef, useCallback } from 'react'
+import { useState, useEffect, useTransition, useOptimistic } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { clockIn, pauseSession, resumeSession, clockOut } from '@/app/dashboard/actions'
 import { createClient } from '@/lib/supabase/client'
-import type { AppUsageEntry } from '@/components/dashboard/app-usage-table'
-
-// Simulated app context for web telemetry ticks
-const SIM_APPS: { app: string; category: string; productivity: AppUsageEntry['productivity'] }[] = [
-  { app: 'Visual Studio Code', category: 'Development', productivity: 'Productive' },
-  { app: 'Google Chrome', category: 'Browsing', productivity: 'Neutral' },
-  { app: 'Claude', category: 'Artificial Intelligence', productivity: 'Productive' },
-  { app: 'ChatGPT', category: 'Artificial Intelligence', productivity: 'Productive' },
-  { app: 'Discord', category: 'Communication', productivity: 'Neutral' },
-  { app: 'Slack', category: 'Communication', productivity: 'Productive' },
-  { app: 'Spotify', category: 'Entertainment', productivity: 'Non-productive' },
-  { app: 'GitHub', category: 'Development', productivity: 'Productive' },
-  { app: 'Notion', category: 'Time Management', productivity: 'Productive' },
-  { app: 'YouTube', category: 'Entertainment', productivity: 'Non-productive' },
-]
 
 interface Project {
   id: string
@@ -41,23 +26,17 @@ interface TimeTrackerProps {
   organizationId: string
   activeSession: ActiveSession | null
   projects: Project[]
-  onUsageUpdate?: (entries: AppUsageEntry[], activeSeconds: number, idleSeconds: number) => void
 }
 
 export function TimeTracker({
   organizationId,
   activeSession,
   projects,
-  onUsageUpdate,
 }: TimeTrackerProps) {
   const router = useRouter()
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
-  // In-memory usage accumulator for the current session
-  const usageRef = useRef<Map<string, { entry: AppUsageEntry; seconds: number }>>(new Map())
-  const activeSecondsRef = useRef(0)
-  const idleSecondsRef = useRef(0)
 
   const [currentSession, setOptimisticSession] = useOptimistic(
     activeSession,
@@ -106,81 +85,6 @@ export function TimeTracker({
     return () => clearTimeout(timer)
   }, [currentSession])
 
-  // Pick a random simulated app for a tick
-  const pickSimApp = () => SIM_APPS[Math.floor(Math.random() * SIM_APPS.length)]
-
-  // Emit usage update to parent
-  const emitUsage = useCallback(
-    (appEntry: (typeof SIM_APPS)[0], isActive: boolean) => {
-      const key = appEntry.app
-      if (!usageRef.current.has(key)) {
-        usageRef.current.set(key, {
-          entry: {
-            app: appEntry.app,
-            category: appEntry.category,
-            productivity: appEntry.productivity,
-            activityPct: 0,
-            inactivePct: 0,
-            seconds: 0,
-          },
-          seconds: 0,
-        })
-      }
-      const item = usageRef.current.get(key)!
-      item.seconds += 10
-      if (isActive) activeSecondsRef.current += 10
-      else idleSecondsRef.current += 10
-
-      // Recompute pcts
-      const entries = Array.from(usageRef.current.values()).map(({ entry, seconds }) => {
-        const total = seconds
-        const active = Math.round(((entry.activityPct / 100) * total + (isActive && key === entry.app ? 10 : 0)) / total * 100)
-        return { ...entry, seconds, activityPct: Math.min(100, active), inactivePct: Math.max(0, 100 - active) }
-      })
-      onUsageUpdate?.(entries, activeSecondsRef.current, idleSecondsRef.current)
-    },
-    [onUsageUpdate]
-  )
-
-  // Background telemetry emitter — fires every 10s while session is active
-  useEffect(() => {
-    if (!currentSession || currentSession.status !== 'active') return
-
-    const emit = async () => {
-      const simApp = pickSimApp()
-      const isActive = Math.random() > 0.2 // 80% active
-      const key = `${currentSession.id}-${Date.now()}`
-
-      emitUsage(simApp, isActive)
-
-      try {
-        await fetch('/api/v1/events/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            session_id: currentSession.id,
-            organization_id: organizationId,
-            events: [
-              {
-                idempotency_key: key,
-                timestamp: new Date().toISOString(),
-                is_active: isActive,
-                event_type: isActive ? 'active_tick' : 'idle_tick',
-                app_name: simApp.app,
-                window_title: `${simApp.app} — TrackMe Web`,
-              },
-            ],
-          }),
-        })
-      } catch {
-        // shortcut: silent fail — telemetry is best-effort, data loss is acceptable here
-      }
-    }
-
-    const interval = setInterval(emit, 10_000)
-    return () => clearInterval(interval)
-  }, [currentSession, organizationId, emitUsage])
-
   function formatTime(s: number) {
     const h = Math.floor(s / 3600)
     const m = Math.floor((s % 3600) / 60)
@@ -204,9 +108,6 @@ export function TimeTracker({
       organization_id: organizationId,
     }
     setElapsedSeconds(0)
-    usageRef.current.clear()
-    activeSecondsRef.current = 0
-    idleSecondsRef.current = 0
     startTransition(async () => {
       setOptimisticSession(tempSession)
       const res = await clockIn(fd)

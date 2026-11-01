@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1" />
+      <stop offset="100%" stop-color="#4338ca" />
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#grad)" />
+  <!-- Clock Circle -->
+  <circle cx="64" cy="64" r="42" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-opacity="0.9" />
+  <!-- Clock Hands -->
+  <polyline points="64,36 64,64 82,76" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- Center Pin -->
+  <circle cx="64" cy="64" r="5" fill="#ffffff" />
+  <!-- Pulse Dot (Top Right) -->
+  <circle cx="94" cy="34" r="7" fill="#22c55e" stroke="#ffffff" stroke-width="2.5" />
+</svg>

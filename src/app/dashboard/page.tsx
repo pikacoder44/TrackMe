@@ -35,13 +35,25 @@ export default async function DashboardPage() {
   const recentSessions = recentSessionsResult.data
   const currentOrg = memberships?.[0]?.organization_id
 
-  const { data: projects } = currentOrg
-    ? await supabase
-        .from('projects')
-        .select('id, name')
-        .eq('organization_id', currentOrg)
-        .eq('is_active', true)
-    : { data: [] }
+  const [projectsResult, activityEventsResult] = await Promise.all([
+    currentOrg
+      ? supabase
+          .from('projects')
+          .select('id, name')
+          .eq('organization_id', currentOrg)
+          .eq('is_active', true)
+      : Promise.resolve({ data: [] }),
+    activeSession
+      ? supabase
+          .from('activity_events')
+          .select('id, session_id, event_type, window_title, app_name, recorded_at')
+          .eq('session_id', activeSession.id)
+          .order('recorded_at', { ascending: false })
+      : Promise.resolve({ data: [] }),
+  ])
+
+  const projects = projectsResult.data || []
+  const activityEvents = activityEventsResult.data || []
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -56,7 +68,8 @@ export default async function DashboardPage() {
         <EmployeeDashboardClient
           organizationId={currentOrg}
           activeSession={activeSession}
-          projects={projects || []}
+          projects={projects}
+          initialEvents={activityEvents}
         />
       ) : (
         <Card>
