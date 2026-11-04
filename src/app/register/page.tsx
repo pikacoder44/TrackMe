@@ -20,8 +20,6 @@ function RegisterContent() {
     event.preventDefault()
     setError(null)
     const formData = new FormData(event.currentTarget)
-    formData.append('roleType', 'employee')
-
     startTransition(async () => {
       const res = await register(formData)
       if (res?.error) setError(res.error)

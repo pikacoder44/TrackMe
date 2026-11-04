@@ -40,14 +40,9 @@ export default function HomePage() {
           </nav>
 
           <div className="flex items-center gap-3">
-            <Link href="/register">
-              <Button variant="ghost" size="sm" className="text-sm">
-                Register with Code
-              </Button>
-            </Link>
             <Link href="/login">
               <Button size="sm" className="text-sm shadow-sm">
-                Manager Login
+                Sign In / Register
               </Button>
             </Link>
           </div>
@@ -255,7 +250,7 @@ export default function HomePage() {
               Register
             </Link>
             <Link href="/login" className="hover:text-foreground">
-              Manager Login
+              Sign In
             </Link>
           </div>
         </div>

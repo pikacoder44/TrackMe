@@ -63,8 +63,8 @@ describe('Auth, RBAC, Team Join & Multi-Role Architecture', () => {
       expect(isSuperAdmin('manager')).toBe(false)
     })
 
-    it('routes employee to /install', () => {
-      expect(getRoleHome('employee')).toBe('/install')
+    it('routes employee to /dashboard', () => {
+      expect(getRoleHome('employee')).toBe('/dashboard')
       expect(isEmployee('employee')).toBe(true)
       expect(isManager('employee')).toBe(false)
       expect(isSuperAdmin('employee')).toBe(false)

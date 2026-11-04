@@ -72,16 +72,10 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  // Manager Portal RBAC: /dashboard restricted strictly to manager/super_admin roles
+  // Manager / Employee Portal: /dashboard access
   if (pathname.startsWith('/dashboard')) {
     if (!user) {
       return NextResponse.redirect(new URL('/login', request.url))
-    }
-
-    const { role } = await resolveUserSystemRole(supabase, user)
-    // If employee attempts to visit /dashboard, redirect to /install
-    if (role === 'employee') {
-      return NextResponse.redirect(new URL('/install', request.url))
     }
   }
 

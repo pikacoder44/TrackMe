@@ -2,6 +2,7 @@
 
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveUserSystemRole } from '@/lib/auth-rbac'
 
 export async function login(formData: FormData) {
@@ -59,7 +60,7 @@ export async function login(formData: FormData) {
 
     if (role === 'super_admin') {
       redirect('/admin/dashboard')
-    } else if (role === 'manager') {
+    } else if (role === 'manager' || role === 'employee') {
       redirect('/dashboard')
     } else {
       redirect('/install')
@@ -105,34 +106,75 @@ export async function register(formData: FormData) {
 
   try {
     // 1. Detect if this user matches a pre-approved Manager profile slot
-    const { data: preApprovedManager } = await supabase
+    // Use admin client if available to bypass RLS during anonymous registration lookup
+    const adminSupabase = createAdminClient() || supabase
+    let managerQuery = adminSupabase
       .from('profiles')
-      .select('id, email, username, full_name, role, approval_status')
-      .ilike('email', email)
+      .select('*')
       .eq('role', 'manager')
-      .eq('approval_status', 'approved')
-      .maybeSingle()
+
+    if (cleanUsername) {
+      managerQuery = managerQuery.or(`email.ilike.${email},username.ilike.${cleanUsername}`)
+    } else {
+      managerQuery = managerQuery.ilike('email', email)
+    }
+
+    const { data: preapprovedSlots, error: preapprovedError } = await managerQuery
+    if (preapprovedError) {
+      console.error('[REGISTER CHECK ERROR]', preapprovedError)
+    }
+    console.log('[REGISTER CHECK]', { email, username: cleanUsername, slotFound: preapprovedSlots?.length })
+
+    const preApprovedManager = preapprovedSlots && preapprovedSlots.length > 0 ? preapprovedSlots[0] : null
 
     if (preApprovedManager) {
+      let newUserId: string
+
       // Create user auth account with the manager's chosen password
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: fullName || preApprovedManager.full_name,
-            username: cleanUsername || preApprovedManager.username,
-            role: 'manager',
-            approval_status: 'approved',
+      // Use admin client if available to bypass rate limits and auto-confirm email
+      if (adminSupabase?.auth?.admin) {
+        const { data: adminUserData, error: adminUserError } =
+          await adminSupabase.auth.admin.createUser({
+            email,
+            password,
+            email_confirm: true,
+            user_metadata: {
+              full_name: fullName || preApprovedManager.full_name,
+              username: cleanUsername || preApprovedManager.username,
+              role: 'manager',
+              approval_status: 'approved',
+            },
+          })
+
+        if (adminUserError || !adminUserData.user) {
+          return {
+            error:
+              adminUserError?.message ||
+              'Failed to create manager authentication account.',
+          }
+        }
+
+        newUserId = adminUserData.user.id
+      } else {
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              full_name: fullName || preApprovedManager.full_name,
+              username: cleanUsername || preApprovedManager.username,
+              role: 'manager',
+              approval_status: 'approved',
+            },
           },
-        },
-      })
+        })
 
-      if (signUpError || !signUpData.user) {
-        return { error: signUpError?.message || 'Failed to create manager authentication account.' }
+        if (signUpError || !signUpData.user) {
+          return { error: signUpError?.message || 'Failed to create manager authentication account.' }
+        }
+
+        newUserId = signUpData.user.id
       }
-
-      const newUserId = signUpData.user.id
 
       // Claim the pre-approved profile slot
       const { error: claimErr } = await supabase.rpc('claim_preapproved_manager', {
@@ -179,6 +221,12 @@ export async function register(formData: FormData) {
             .eq('id', preApprovedManager.id)
         }
       }
+
+      // Automatically sign in the manager now that account is confirmed
+      await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
 
       redirect('/dashboard')
     }

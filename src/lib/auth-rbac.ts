@@ -13,8 +13,8 @@ export function getRoleHome(role: string | null | undefined): string {
   if (!role) return '/login'
   const normalized = role.toLowerCase().trim()
   if (normalized === 'super_admin') return '/admin/dashboard'
-  if (['manager', 'owner', 'admin'].includes(normalized)) return '/dashboard'
-  return '/install'
+  if (['manager', 'owner', 'admin', 'employee'].includes(normalized)) return '/dashboard'
+  return '/dashboard'
 }
 
 export function isSuperAdmin(role: string | null | undefined): boolean {
