@@ -108,7 +108,7 @@ export async function register(formData: FormData) {
     const { data: preApprovedManager } = await supabase
       .from('profiles')
       .select('id, email, username, full_name, role, approval_status')
-      .or(`email.ilike.${email},username.ilike.${cleanUsername}`)
+      .ilike('email', email)
       .eq('role', 'manager')
       .eq('approval_status', 'approved')
       .maybeSingle()

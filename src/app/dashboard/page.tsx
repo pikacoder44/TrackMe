@@ -67,7 +67,7 @@ export default async function DashboardPage() {
 
   const todayDateStr = new Date().toISOString().slice(0, 10)
 
-  const [membersResult, sessionsResult, eventsResult, todayReportResult] = await Promise.all([
+  const [membersResult, sessionsResult, todayReportResult] = await Promise.all([
     supabase
       .from('organization_members')
       .select('id, user_id, role, approval_status, created_at, profile:profiles(full_name, email, username)')
@@ -77,12 +77,6 @@ export default async function DashboardPage() {
       .select('id, user_id, status, started_at')
       .eq('organization_id', orgId)
       .in('status', ['active', 'paused']),
-    supabase
-      .from('activity_events')
-      .select('id, user_id, session_id, event_type, window_title, app_name, recorded_at, payload')
-      .eq('organization_id', orgId)
-      .gte('recorded_at', twelveHoursAgo)
-      .order('recorded_at', { ascending: false }),
     supabase
       .from('daily_reports')
       .select('id, file_name, file_url, created_at')
@@ -95,6 +89,19 @@ export default async function DashboardPage() {
 
   const allMembers = (membersResult.data as unknown as MemberWithProfile[]) ?? []
   const activeSessions = (sessionsResult.data as WorkSession[]) ?? []
+
+  // Only fetch events for active/paused sessions to bound memory usage
+  const activeSessionIds = activeSessions.map((s) => s.id)
+  const eventsResult = activeSessionIds.length > 0
+    ? await supabase
+        .from('activity_events')
+        .select('id, user_id, session_id, event_type, window_title, app_name, recorded_at, payload')
+        .eq('organization_id', orgId)
+        .gte('recorded_at', twelveHoursAgo)
+        .in('session_id', activeSessionIds)
+        .order('recorded_at', { ascending: false })
+        .limit(100)
+    : { data: [] }
 
   // Pending members awaiting manager approval
   const pendingMembers: PendingMember[] = allMembers

@@ -12,6 +12,13 @@ const SYNC_ALARM_NAME = 'sync_events';
 const SYNC_INTERVAL_MINUTES = 0.25; // 15 seconds
 const MAX_QUEUE_SIZE = 1000;
 
+// Serialized write queue: prevents overlapping captureTick calls from dropping events
+let _writeChain = Promise.resolve();
+function enqueueWrite(fn) {
+  _writeChain = _writeChain.then(fn).catch(() => {}); // swallow to keep chain live
+  return _writeChain;
+}
+
 // Promise wrappers for chrome.storage.local
 function getStorage(keys) {
   return new Promise((resolve) => {
@@ -182,24 +189,25 @@ async function captureTick(reason = 'tick') {
     }
   };
 
-  const queue = Array.isArray(storage.eventQueue) ? storage.eventQueue : [];
-  queue.push(tick);
-
-  // Guard against runaway memory growth if offline for hours
-  if (queue.length > MAX_QUEUE_SIZE) {
-    queue.splice(0, queue.length - MAX_QUEUE_SIZE);
-  }
-
-  await setStorage({
-    eventQueue: queue,
-    lastActiveTab: {
-      domain,
-      url,
-      title: windowTitle,
-      appName,
-      isActive,
-      timestamp: tick.timestamp
+  // Serialize the read-modify-write through enqueueWrite to prevent lost updates from concurrent ticks
+  await enqueueWrite(async () => {
+    const fresh = await getStorage(['eventQueue']);
+    const queue = Array.isArray(fresh.eventQueue) ? fresh.eventQueue : [];
+    queue.push(tick);
+    if (queue.length > MAX_QUEUE_SIZE) {
+      queue.splice(0, queue.length - MAX_QUEUE_SIZE);
     }
+    await setStorage({
+      eventQueue: queue,
+      lastActiveTab: {
+        domain,
+        url,
+        title: windowTitle,
+        appName,
+        isActive,
+        timestamp: tick.timestamp
+      }
+    });
   });
 }
 

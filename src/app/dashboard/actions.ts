@@ -79,8 +79,29 @@ export async function clockOut(sessionId: string) {
 
   if (fetchError || !session) return { error: fetchError?.message || 'Session not found' }
 
+  // Sum break durations recorded in activity_events
+  const { data: breakEvents } = await supabase
+    .from('activity_events')
+    .select('event_type, recorded_at')
+    .eq('session_id', sessionId)
+    .in('event_type', ['break_start', 'break_end'])
+    .order('recorded_at', { ascending: true })
+
+  let breakSeconds = 0
+  if (breakEvents) {
+    let breakStart: Date | null = null
+    for (const ev of breakEvents) {
+      if (ev.event_type === 'break_start') {
+        breakStart = new Date(ev.recorded_at)
+      } else if (ev.event_type === 'break_end' && breakStart) {
+        breakSeconds += Math.max(0, Math.floor((new Date(ev.recorded_at).getTime() - breakStart.getTime()) / 1000))
+        breakStart = null
+      }
+    }
+  }
+
   const startMs = new Date(session.started_at).getTime()
-  const durationSeconds = Math.max(0, Math.floor((now.getTime() - startMs) / 1000))
+  const durationSeconds = Math.max(0, Math.floor((now.getTime() - startMs) / 1000) - breakSeconds)
 
   // 2. Concurrently update session and insert time entry
   const [sessionUpdateResult, timeEntryInsertResult] = await Promise.all([

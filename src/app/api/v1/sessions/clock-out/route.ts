@@ -38,9 +38,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: fetchError?.message || 'Session not found' }, { status: 404 })
     }
 
+    // Sum break durations: each break_start event paired with its following break_end event
+    const { data: breakEvents } = await supabase
+      .from('activity_events')
+      .select('event_type, recorded_at')
+      .eq('session_id', session_id)
+      .in('event_type', ['break_start', 'break_end'])
+      .order('recorded_at', { ascending: true })
+
+    let breakSeconds = 0
+    if (breakEvents) {
+      let breakStart: Date | null = null
+      for (const ev of breakEvents) {
+        if (ev.event_type === 'break_start') {
+          breakStart = new Date(ev.recorded_at)
+        } else if (ev.event_type === 'break_end' && breakStart) {
+          breakSeconds += Math.max(0, Math.floor((new Date(ev.recorded_at).getTime() - breakStart.getTime()) / 1000))
+          breakStart = null
+        }
+      }
+    }
+
     const durationSeconds = Math.max(
       0,
-      Math.floor((now.getTime() - new Date(session.started_at).getTime()) / 1000)
+      Math.floor((now.getTime() - new Date(session.started_at).getTime()) / 1000) - breakSeconds
     )
 
     const [sessionUpdate, timeEntry] = await Promise.all([

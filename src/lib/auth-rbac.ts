@@ -50,7 +50,7 @@ export async function resolveUserSystemRole(
     .eq('id', user.id)
     .maybeSingle()
 
-  if (profile?.role === 'super_admin' || user.user_metadata?.role === 'super_admin') {
+  if (profile?.role === 'super_admin') {
     return {
       role: 'super_admin',
       organizationId: null,

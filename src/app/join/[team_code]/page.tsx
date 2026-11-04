@@ -14,12 +14,18 @@ export default async function JoinPage({ params }: JoinPageProps) {
 
   const supabase = await createClient()
 
-  // Verify team code
-  const { data: org } = await supabase
-    .from('organizations')
-    .select('id, name, slug, require_approval')
-    .ilike('team_code', cleanCode)
-    .maybeSingle()
+  // Verify team code via SECURITY DEFINER function (avoids direct table access for unauthenticated users)
+  const { data: verifiedOrgs } = await supabase.rpc('verify_team_code', { p_team_code: cleanCode })
+  const verifiedOrg = Array.isArray(verifiedOrgs) && verifiedOrgs.length > 0 ? verifiedOrgs[0] : null
+
+  // Fetch org details for display (require_approval, slug) only after the code is verified
+  const { data: org } = verifiedOrg
+    ? await supabase
+        .from('organizations')
+        .select('id, name, slug, require_approval')
+        .eq('id', verifiedOrg.organization_id)
+        .maybeSingle()
+    : { data: null }
 
   if (!org) {
     return (
