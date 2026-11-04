@@ -92,9 +92,11 @@ export default async function DashboardLayout({
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
         <header className="h-14 border-b bg-background px-6 flex items-center justify-between">
-          <h1 className="font-semibold text-sm text-muted-foreground">Workspace</h1>
-          <span className="text-xs text-muted-foreground">
-            {profile?.full_name ?? user.email}
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-bold tracking-wider uppercase px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+            Manager Hub
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-muted text-foreground border border-border/60 truncate max-w-xs">
+            {user.email}
           </span>
         </header>
         <main className="flex-1 p-6 overflow-y-auto">{children}</main>

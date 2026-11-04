@@ -354,7 +354,7 @@ export function AdminDashboardClient({
                             {team.manager.username})
                           </span>
                           {team.manager.isPendingSignup && (
-                            <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-800 dark:text-blue-300 border border-blue-500/30">
+                            <span className="text-xs font-semibold uppercase px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-800 dark:text-blue-300 border border-blue-500/30">
                               Pre-Approved Slot
                             </span>
                           )}
@@ -418,19 +418,19 @@ export function AdminDashboardClient({
                     <div className="p-4 rounded-xl border border-emerald-500/25 bg-emerald-500/10 text-emerald-950 dark:text-emerald-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
                       <div className="space-y-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 border border-emerald-500/30">
+                          <span className="text-xs font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 border border-emerald-500/30">
                             Team Manager
                           </span>
                           {team.manager.isPendingSignup ? (
-                            <span className="text-[10px] uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-blue-500/15 text-blue-800 dark:text-blue-300 border border-blue-500/30 font-semibold">
+                            <span className="text-xs font-semibold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-blue-500/15 text-blue-800 dark:text-blue-300 border border-blue-500/30">
                               Pre-Approved Slot (Pending Sign-up)
                             </span>
                           ) : team.manager.hasUploadedToday ? (
-                            <span className="text-[10px] uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-600 text-white font-semibold shadow-xs">
+                            <span className="text-xs font-semibold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-600 text-white shadow-xs">
                               Report Uploaded Today
                             </span>
                           ) : (
-                            <span className="text-[10px] uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-900 dark:text-amber-300 border border-amber-500/40 font-semibold">
+                            <span className="text-xs font-semibold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-900 dark:text-amber-300 border border-amber-500/40">
                               Report Missing Today
                             </span>
                           )}
@@ -612,7 +612,10 @@ export function AdminDashboardClient({
 
       {/* Modal: + New Team */}
       {showNewTeamModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowNewTeamModal(false); }}
+        >
           <Card className="w-full max-w-md shadow-2xl border-border/80">
             <CardHeader>
               <CardTitle className="text-lg font-bold">
@@ -824,7 +827,10 @@ export function AdminDashboardClient({
 
       {/* Modal: + Assign Manager */}
       {assigningTeam && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in"
+          onClick={(e) => { if (e.target === e.currentTarget) { setAssigningTeam(null); setAssignManagerInput(""); } }}
+        >
           <Card className="w-full max-w-md shadow-2xl border-border/80">
             <CardHeader>
               <CardTitle className="text-lg font-bold">
