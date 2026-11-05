@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import {
   TeamDashboardClient,
   type EmployeeStatus,
@@ -35,11 +36,88 @@ export default async function DashboardPage() {
   if (!user) redirect('/login')
 
   // Fetch current user's organization membership
-  const { data: membership } = await supabase
+  const { data: userMemberships } = await supabase
     .from('organization_members')
     .select('role, organization_id, organization:organizations(id, name)')
     .eq('user_id', user.id)
-    .maybeSingle()
+    .order('created_at', { ascending: false })
+    .limit(1)
+
+  let membership = userMemberships?.[0] || null
+
+  // Fallback: If no organization membership found, check for a legacy profile or team slot
+  if (!membership || !membership.organization_id) {
+    const adminClient = createAdminClient()
+    if (adminClient) {
+      const userEmail = user.email || ''
+      const userMetadata = user.user_metadata || {}
+      const usernameVal = userMetadata.username || (userEmail ? userEmail.split('@')[0] : '')
+
+      // Query profiles for any matching slot that has an organization_id or legacy association
+      let legacyProfileQuery = adminClient
+        .from('profiles')
+        .select('id, email, username, role')
+        .neq('id', user.id)
+
+      if (usernameVal) {
+        legacyProfileQuery = legacyProfileQuery.or(`email.ilike.${userEmail},username.ilike.${usernameVal}`)
+      } else if (userEmail) {
+        legacyProfileQuery = legacyProfileQuery.ilike('email', userEmail)
+      }
+
+      const { data: legacyProfiles } = await legacyProfileQuery
+
+      if (legacyProfiles && legacyProfiles.length > 0) {
+        const legacyProfileIds = legacyProfiles.map((p) => p.id)
+
+        // Find existing organization_members record associated with the legacy slot
+        const { data: legacyMemberships } = await adminClient
+          .from('organization_members')
+          .select('organization_id, role, approval_status, organization:organizations(id, name)')
+          .in('user_id', legacyProfileIds)
+          .order('created_at', { ascending: false })
+          .limit(1)
+
+        const legacyMembership = legacyMemberships?.[0] || null
+
+        if (legacyMembership?.organization_id) {
+          const orgIdToBind = legacyMembership.organization_id
+
+          // Upsert organization_members for active authenticated user
+          await adminClient.from('organization_members').upsert(
+            {
+              organization_id: orgIdToBind,
+              user_id: user.id,
+              role: legacyMembership.role || 'manager',
+              approval_status: legacyMembership.approval_status || 'approved',
+            },
+            { onConflict: 'organization_id,user_id' }
+          )
+
+          // Update profiles table for current user using admin client
+          await adminClient
+            .from('profiles')
+            .update({
+              role: 'manager',
+              approval_status: 'approved',
+            })
+            .eq('id', user.id)
+
+          // Clean up legacy profile placeholders to prevent duplicates
+          await adminClient
+            .from('profiles')
+            .delete()
+            .in('id', legacyProfileIds)
+
+          membership = {
+            role: legacyMembership.role || 'manager',
+            organization_id: orgIdToBind,
+            organization: legacyMembership.organization,
+          }
+        }
+      }
+    }
+  }
 
   if (!membership || !membership.organization_id) {
     return (

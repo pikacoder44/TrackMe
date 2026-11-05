@@ -55,6 +55,50 @@ export async function login(formData: FormData) {
       return { error: authError?.message || 'Invalid username or password' }
     }
 
+    // Retroactive recovery for pre-approved managers whose organization membership was not transferred
+    const adminClient = createAdminClient()
+    if (adminClient) {
+      const { data: currentMember } = await adminClient
+        .from('organization_members')
+        .select('id, organization_id')
+        .eq('user_id', authData.user.id)
+        .maybeSingle()
+
+      if (!currentMember) {
+        // Check if there is an unassociated organization membership matching this user's username or email
+        const userEmail = authData.user.email
+        const userMetadata = authData.user.user_metadata || {}
+        const usernameVal = userMetadata.username || (userEmail ? userEmail.split('@')[0] : '')
+
+        const { data: legacyProfile } = await adminClient
+          .from('profiles')
+          .select('id')
+          .or(`email.ilike.${userEmail},username.ilike.${usernameVal}`)
+          .neq('id', authData.user.id)
+          .maybeSingle()
+
+        if (legacyProfile) {
+          const { data: legacyMember } = await adminClient
+            .from('organization_members')
+            .select('organization_id, role, approval_status')
+            .eq('user_id', legacyProfile.id)
+            .maybeSingle()
+
+          if (legacyMember) {
+            await adminClient.from('organization_members').upsert(
+              {
+                organization_id: legacyMember.organization_id,
+                user_id: authData.user.id,
+                role: legacyMember.role || 'manager',
+                approval_status: legacyMember.approval_status || 'approved',
+              },
+              { onConflict: 'organization_id,user_id' }
+            )
+          }
+        }
+      }
+    }
+
     // Role-based routing
     const { role } = await resolveUserSystemRole(supabase, authData.user)
 
@@ -176,8 +220,21 @@ export async function register(formData: FormData) {
         newUserId = signUpData.user.id
       }
 
+      // Fetch any existing organization membership for the pre-approved slot
+      const { data: slotMemberships } = await adminSupabase
+        .from('organization_members')
+        .select('organization_id')
+        .eq('user_id', preApprovedManager.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+
+      const slotOrgId =
+        slotMemberships?.[0]?.organization_id ||
+        (preApprovedManager as { organization_id?: string })?.organization_id ||
+        null
+
       // Claim the pre-approved profile slot
-      const { error: claimErr } = await supabase.rpc('claim_preapproved_manager', {
+      const { error: claimErr } = await adminSupabase.rpc('claim_preapproved_manager', {
         p_preapproved_id: preApprovedManager.id,
         p_new_user_id: newUserId,
         p_email: email,
@@ -187,7 +244,7 @@ export async function register(formData: FormData) {
 
       // Fallback in case RPC is not yet applied
       if (claimErr) {
-        await supabase.from('profiles').upsert(
+        await adminSupabase.from('profiles').upsert(
           {
             id: newUserId,
             email,
@@ -195,31 +252,52 @@ export async function register(formData: FormData) {
             username: cleanUsername || preApprovedManager.username,
             role: 'manager',
             approval_status: 'approved',
+            is_pending_signup: false,
           },
           { onConflict: 'id' }
         )
 
         if (preApprovedManager.id !== newUserId) {
-          await supabase
+          await adminSupabase
             .from('organization_members')
             .update({ user_id: newUserId })
             .eq('user_id', preApprovedManager.id)
 
-          await supabase
+          await adminSupabase
             .from('manager_notifications')
             .update({ manager_id: newUserId })
             .eq('manager_id', preApprovedManager.id)
 
-          await supabase
+          await adminSupabase
             .from('daily_reports')
             .update({ manager_id: newUserId })
             .eq('manager_id', preApprovedManager.id)
 
-          await supabase
+          await adminSupabase
             .from('profiles')
             .delete()
             .eq('id', preApprovedManager.id)
         }
+      }
+
+      // Ensure organization_members record exists for new manager without creating duplicates
+      if (slotOrgId) {
+        // Remove any stale or duplicate placeholder rows for this user in other orgs or conflicting slots
+        await adminSupabase
+          .from('organization_members')
+          .delete()
+          .eq('user_id', newUserId)
+          .neq('organization_id', slotOrgId)
+
+        await adminSupabase.from('organization_members').upsert(
+          {
+            organization_id: slotOrgId,
+            user_id: newUserId,
+            role: 'manager',
+            approval_status: 'approved',
+          },
+          { onConflict: 'organization_id,user_id' }
+        )
       }
 
       // Automatically sign in the manager now that account is confirmed

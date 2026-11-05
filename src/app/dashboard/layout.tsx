@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { logout } from '@/app/auth/actions'
 import { Button } from '@/components/ui/button'
 import { DashboardNav } from '@/components/dashboard/dashboard-nav'
@@ -37,11 +38,76 @@ export default async function DashboardLayout({
     supabase
       .from('organization_members')
       .select('role, organization:organizations(id, name)')
-      .eq('user_id', user.id),
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false }),
   ])
 
   const profile = profileResult.data
-  const typedMemberships = (membershipsResult.data as unknown as MembershipWithOrg[]) || []
+  let typedMemberships = (membershipsResult.data as unknown as MembershipWithOrg[]) || []
+
+  // Fallback: If no organization membership found, check for a legacy profile slot
+  if (typedMemberships.length === 0) {
+    const adminClient = createAdminClient()
+    if (adminClient) {
+      const userEmail = user.email || ''
+      const userMetadata = user.user_metadata || {}
+      const usernameVal = userMetadata.username || (userEmail ? userEmail.split('@')[0] : '')
+
+      let legacyQuery = adminClient
+        .from('profiles')
+        .select('id')
+        .neq('id', user.id)
+
+      if (usernameVal) {
+        legacyQuery = legacyQuery.or(`email.ilike.${userEmail},username.ilike.${usernameVal}`)
+      } else if (userEmail) {
+        legacyQuery = legacyQuery.ilike('email', userEmail)
+      }
+
+      const { data: legacyProfiles } = await legacyQuery
+      if (legacyProfiles && legacyProfiles.length > 0) {
+        const legacyProfileIds = legacyProfiles.map((p) => p.id)
+        const { data: legacyMemberships } = await adminClient
+          .from('organization_members')
+          .select('organization_id, role, approval_status, organization:organizations(id, name)')
+          .in('user_id', legacyProfileIds)
+          .order('created_at', { ascending: false })
+          .limit(1)
+
+        const legacyMembership = legacyMemberships?.[0] || null
+
+        if (legacyMembership?.organization_id) {
+          await adminClient.from('organization_members').upsert(
+            {
+              organization_id: legacyMembership.organization_id,
+              user_id: user.id,
+              role: legacyMembership.role || 'manager',
+              approval_status: legacyMembership.approval_status || 'approved',
+            },
+            { onConflict: 'organization_id,user_id' }
+          )
+
+          await adminClient
+            .from('profiles')
+            .update({ role: 'manager', approval_status: 'approved' })
+            .eq('id', user.id)
+
+          await adminClient
+            .from('profiles')
+            .delete()
+            .in('id', legacyProfileIds)
+
+          typedMemberships = [
+            {
+              role: (legacyMembership.role as MembershipWithOrg['role']) || 'manager',
+              organization: legacyMembership.organization as unknown as MembershipWithOrg['organization'],
+            },
+          ]
+        }
+      }
+    }
+  }
+
   const currentMembership = typedMemberships[0] || null
   const currentOrg = currentMembership?.organization
 
