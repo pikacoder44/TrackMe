@@ -298,6 +298,25 @@ export async function register(formData: FormData) {
           },
           { onConflict: 'organization_id,user_id' }
         )
+
+        // Sync manager_id on organizations / teams if column exists
+        try {
+          await adminSupabase
+            .from('organizations')
+            .update({ manager_id: newUserId } as unknown as Record<string, unknown>)
+            .eq('id', slotOrgId)
+        } catch {
+          // Ignore if manager_id column does not exist on organizations
+        }
+
+        try {
+          await adminSupabase
+            .from('teams')
+            .update({ manager_id: newUserId } as unknown as Record<string, unknown>)
+            .eq('id', slotOrgId)
+        } catch {
+          // Ignore if teams table or manager_id column does not exist
+        }
       }
 
       // Automatically sign in the manager now that account is confirmed

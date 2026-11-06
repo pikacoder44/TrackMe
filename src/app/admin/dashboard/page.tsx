@@ -13,6 +13,8 @@ interface ProfileData {
   role?: string
   approval_status?: string | null
   is_pending_signup?: boolean | null
+  created_at?: string
+  updated_at?: string
 }
 
 interface MemberRecord {
@@ -86,7 +88,7 @@ export default async function AdminDashboardPage() {
     getCandidateManagers(),
     db
       .from('profiles')
-      .select('id, full_name, username, email, role, approval_status, is_pending_signup'),
+      .select('id, full_name, username, email, role, approval_status, is_pending_signup, created_at, updated_at'),
   ])
 
   const rawOrgs = orgsResult.data || []
@@ -124,9 +126,36 @@ export default async function AdminDashboardPage() {
     const isExcludedRole = (r: string) => r === 'super_admin' || r === 'owner'
 
     // Find primary manager for this team (strictly excluding super_admin and owner)
-    const managerMember = orgMembers.find(
+    // Exclude placeholder seed accounts (like manager@acme.com) when active registered managers exist
+    const managerMembers = orgMembers.filter(
       (m) => !isExcludedRole(m.role) && (m.role === 'manager' || m.role === 'admin')
     )
+
+    // Sort manager members so that:
+    // 1. Non-placeholder active accounts come before placeholder accounts (manager@acme.com)
+    // 2. Completed signups (!is_pending_signup) come before pending signups
+    // 3. Most recently updated/created accounts come first
+    const isPlaceholderEmail = (email?: string) =>
+      email?.toLowerCase() === 'manager@acme.com' || email?.toLowerCase().startsWith('placeholder')
+
+    const sortedManagers = [...managerMembers].sort((a, b) => {
+      const profA = profilesMap.get(a.user_id) || a.profile
+      const profB = profilesMap.get(b.user_id) || b.profile
+
+      const aIsPlaceholder = isPlaceholderEmail(profA?.email)
+      const bIsPlaceholder = isPlaceholderEmail(profB?.email)
+      if (aIsPlaceholder !== bIsPlaceholder) return aIsPlaceholder ? 1 : -1
+
+      const aPending = profA?.is_pending_signup ?? true
+      const bPending = profB?.is_pending_signup ?? true
+      if (aPending !== bPending) return aPending ? 1 : -1
+
+      const timeA = profA?.updated_at || profA?.created_at || a.created_at || ''
+      const timeB = profB?.updated_at || profB?.created_at || b.created_at || ''
+      return timeB.localeCompare(timeA)
+    })
+
+    const managerMember = sortedManagers[0] || null
 
     let managerInfo = null
     if (managerMember) {
@@ -134,11 +163,17 @@ export default async function AdminDashboardPage() {
       const matchedProfile = profilesMap.get(mgrId) || managerMember.profile || null
 
       if (matchedProfile) {
-        const todayReport = rawReports.find(
-          (r) => r.organization_id === org.id && r.manager_id === mgrId
-        )
+        // Find today's daily report by organization_id or by manager_id
+        const orgManagerIds = new Set(managerMembers.map((m) => m.user_id))
+        const todayReport =
+          rawReports.find(
+            (r) => r.organization_id === org.id && (r.manager_id === mgrId || orgManagerIds.has(r.manager_id))
+          ) ||
+          rawReports.find((r) => r.organization_id === org.id) ||
+          rawReports.find((r) => r.manager_id === mgrId)
+
         const recentNotice = rawNotices.find(
-          (n) => n.manager_id === mgrId && (!n.organization_id || n.organization_id === org.id)
+          (n) => (n.manager_id === mgrId || orgManagerIds.has(n.manager_id)) && (!n.organization_id || n.organization_id === org.id)
         )
 
         managerInfo = {
