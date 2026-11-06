@@ -19,6 +19,7 @@ export default async function DashboardLayout({
   children: React.ReactNode
 }) {
   const supabase = await createClient()
+  const adminSupabase = createAdminClient() || supabase
 
   const {
     data: { user },
@@ -28,18 +29,19 @@ export default async function DashboardLayout({
     redirect('/login')
   }
 
-  // Fetch profile and organization memberships concurrently
+  // Fetch profile and organization memberships concurrently using admin client to guarantee hydration
   const [profileResult, membershipsResult] = await Promise.all([
     supabase
       .from('profiles')
       .select('full_name, email')
       .eq('id', user.id)
       .maybeSingle(),
-    supabase
+    adminSupabase
       .from('organization_members')
-      .select('role, organization:organizations(id, name)')
+      .select('*, organization:organizations(*)')
       .eq('user_id', user.id)
-      .order('created_at', { ascending: false }),
+      .order('created_at', { ascending: false })
+      .limit(1),
   ])
 
   const profile = profileResult.data
@@ -47,7 +49,7 @@ export default async function DashboardLayout({
 
   // Fallback: If no organization membership found, check for a legacy profile slot
   if (typedMemberships.length === 0) {
-    const adminClient = createAdminClient()
+    const adminClient = adminSupabase
     if (adminClient) {
       const userEmail = user.email || ''
       const userMetadata = user.user_metadata || {}

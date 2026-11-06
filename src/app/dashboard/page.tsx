@@ -28,6 +28,7 @@ interface WorkSession {
 
 export default async function DashboardPage() {
   const supabase = await createClient()
+  const adminSupabase = createAdminClient() || supabase
 
   const {
     data: { user },
@@ -35,19 +36,23 @@ export default async function DashboardPage() {
 
   if (!user) redirect('/login')
 
-  // Fetch current user's organization membership
-  const { data: userMemberships } = await supabase
+  // Fetch current user's organization membership using admin client to ensure hydration
+  const { data: userMemberships } = await adminSupabase
     .from('organization_members')
-    .select('role, organization_id, organization:organizations(id, name)')
+    .select('*, organization:organizations(*)')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
     .limit(1)
 
-  let membership = userMemberships?.[0] || null
+  let membership = (userMemberships?.[0] as unknown as {
+    role: string
+    organization_id: string
+    organization: { id: string; name: string } | null
+  }) || null
 
   // Fallback: If no organization membership found, check for a legacy profile or team slot
   if (!membership || !membership.organization_id) {
-    const adminClient = createAdminClient()
+    const adminClient = adminSupabase
     if (adminClient) {
       const userEmail = user.email || ''
       const userMetadata = user.user_metadata || {}
@@ -112,7 +117,7 @@ export default async function DashboardPage() {
           membership = {
             role: legacyMembership.role || 'manager',
             organization_id: orgIdToBind,
-            organization: legacyMembership.organization,
+            organization: legacyMembership.organization as unknown as { id: string; name: string } | null,
           }
         }
       }
