@@ -12,22 +12,37 @@
   - Heartbeat / active ticks dispatched to the supervisory hub (`POST /api/v1/events/sync`).
   - Quick action popup for Clock In, Take Break, Resume, and Clock Out.
 
-### 2. Primary Supervisory Hub: Next.js 15 App Router (`/src/app/dashboard/*`)
+### 2. Supervisory Hub: Next.js 15 App Router (`/src/app/admin/*`, `/src/app/dashboard/*`)
 
-- **Manager & Admin Dashboard (`/src/app/dashboard/manager`)**:
-  - Live team status overview (Working, On Break, Offline).
+- **Super Admin Portal (`/src/app/admin/dashboard`)**:
+  - Executive workspace administration: Organization provisioning, Team creation, color styling, and settings.
+  - **Manager Approvals**: Review and approve or reject newly self-registered managers (`approval_status`: `'pending'` → `'approved'` or `'rejected'`).
+  - **Team & Manager Assignments**: Assign and unassign approved managers across teams (full support for Co-Managers / Multi-Manager teams via `organization_members` and `team_members`).
+  - **Executive Report Oversight**: Review daily team progress reports and export audit logs.
+  - **Strict Boundaries**: Super Admin scope is strictly limited to Organization/Team structure, Manager approvals/assignments, and Daily Executive Report oversight.
+  - **Absolute Prohibitions**:
+    - ZERO direct management, assignment, invitation, or CRUD actions over individual employees (Employees are managed exclusively by their assigned team Managers).
+    - CANNOT manually create, invite, or pre-provision manager accounts or placeholder slots.
+    - CANNOT assign unregistered users or placeholder accounts to any team.
+- **Manager Dashboard (`/src/app/dashboard/manager`)**:
+  - Accessible only to approved managers (`approval_status = 'approved'`).
+  - Live team status overview (Working, On Break, Offline) for assigned teams.
   - Real-time employee active application & website monitoring.
-  - Activity timelines, time audit approval workflows, and CSV export capabilities.
+  - Activity timelines, timesheets, time audit approval workflows, and CSV export capabilities.
+  - Direct employee management: Issue Team Registration Codes for employee onboarding.
+  - Daily report uploads for Super Admin executive review.
+  - **Gated Access**: Newly registered managers start with `approval_status = 'pending'` and are strictly blocked from viewing team telemetry, timesheets, employee data, and manager tools until approved by Super Admin.
 - **Employee Web Dashboard (`/src/app/dashboard`)**:
   - Personal session stats, active work duration, and app/website usage breakdowns.
-  - Real-time Supabase subscriptions updating metrics without manual polling.
+  - Real-time Supabase subscriptions updating personal metrics without manual polling.
 
-### 3. Ingestion & Session API Surface (`/src/app/api/v1/*`)
+### 3. Ingestion, Session & Admin API Surface (`/src/app/api/v1/*`)
 
 - `POST /api/v1/events/sync`: High-throughput batch event ingestion with UUID idempotency key deduplication.
 - `POST /api/v1/sessions/clock-in`: Starts active work session.
 - `POST /api/v1/sessions/break`: Manages break state transitions (`break_start`, `break_end`).
 - `POST /api/v1/sessions/clock-out`: Concludes work session and creates immutable `time_entries` record.
+- `POST /api/v1/admin/export-audit`: Super Admin endpoint for platform-wide audit log exports.
 - **CORS Support**: Handled via `src/proxy.ts` supporting `chrome-extension://`, `moz-extension://`, and `localhost` origins.
 
 ---
@@ -60,18 +75,22 @@ SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
 
 ## Database Schema Overview
 
-- `profiles`: User information, full name, email, avatar URL.
-- `organizations`: Multi-tenant organization definitions.
-- `organization_members`: Organization membership and role assignments (`owner`, `admin`, `manager`, `member`).
+- `profiles`: User information, full name, email, avatar URL, `role` (`super_admin`, `manager`, `member`), and `approval_status` (`pending`, `approved`, `rejected`).
+- `organizations`: Multi-tenant organization / team container definitions (`name`, `slug`, `team_code`, `color`, `require_approval`).
+- `organization_members`: User organization membership, role assignments (`super_admin`, `manager`, `member`), and membership `approval_status`. Supports multiple managers per organization.
 - `teams`: Teams belonging to an organization.
-- `team_members`: Team membership and manager-to-team assignments. Use explicit membership/assignment records so managers can belong to multiple teams and team membership can be managed independently.
-- `invitations`: Hashed, expiring, revocable registration invitations for managers and employees, including invitation type, organization/team scope, creator, usage limits, and usage count.
+- `team_members`: Relational team membership and manager assignments. Explicitly supports multiple managers assigned to a single team (Co-Managers / Multi-Manager teams).
+- `invitations`: Hashed, expiring, revocable registration codes created by Managers for employee onboarding, scoped to specific teams and organizations. Manager onboarding does NOT use invitation codes.
+- `daily_reports`: Daily team reports uploaded by managers for Super Admin executive review.
 - `work_sessions`: Active/completed employee sessions (`active`, `paused`, `completed`).
 - `activity_events`: High-frequency telemetry events (`active_tick`, `idle_tick`, `window_change`, etc.) with `idempotency_key` and `recorded_at`.
 - `time_entries`: Finalized aggregated time records for payroll, timesheets, and manager approvals.
 - `projects`: Assignable client / internal project entities.
 
-**Role mapping:** The organization owner is represented by the `owner` role; managers use `manager`; employees use `member`. Keep `admin` reserved for any distinct organization-administration or platform-administration role that the existing product genuinely needs. Do not create separate authentication tables for these roles.
+**Role Mapping:**
+- **Super Admin (`super_admin`)**: Platform & organization executive administrator. Manages organizations, teams, manager approvals, manager-team assignments, and executive reports. Strictly excluded from direct employee management.
+- **Manager (`manager`)**: Team manager. Self-registers, enters `pending` state, approved by Super Admin, assigned to one or more teams (co-managers supported). Directly invites and manages team employees.
+- **Employee (`member`)**: Team member. Registers via a Manager-issued Team Registration Code. Telemetry is monitored and approved by assigned team managers.
 
 ---
 
@@ -80,7 +99,7 @@ SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
 1. **Idempotency & Resilience**:
    - All event sync payloads must supply `idempotency_key` (UUID) to guarantee at-most-once storage on retries.
 2. **Supabase Row-Level Security (RLS)**:
-   - All queries and mutations must respect tenant isolation enforced by `organization_members`.
+   - All queries and mutations must respect tenant isolation and role boundaries enforced by `organization_members`, `team_members`, and `profiles`.
 3. **Realtime Channels**:
    - Scope Realtime subscriptions strictly with filters (e.g. `organization_id=eq.${organizationId}`) and unsubscribe cleanly on component unmount.
 4. **Server Components & Performance**:
@@ -93,245 +112,245 @@ SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
 
 ### 1. Core Architecture
 
-Implement a secure, multi-tenant authentication and access-management system for TrackMe.
+TrackMe provides a multi-tenant, role-governed operational telemetry platform with strict access boundaries:
 
-- Multiple companies (organizations) use the same application.
-- Every organization has its own isolated workspace and data.
-- Use one shared authentication system for all users.
-- Use Supabase Auth for identity and credentials, with `profiles` and `organization_members` as the application-level user and role records.
-- Do not create separate authentication systems or separate login tables for owners, managers, and employees.
-- A user's role and organization/team relationships determine what the user can access.
-- The backend and database policies are the source of truth for identity, roles, permissions, and resource access.
+- Multiple companies (organizations) use the same application with isolated workspaces and data.
+- Supabase Auth manages identities and credentials, with `profiles`, `organization_members`, and `team_members` serving as application-level identity, role, and assignment records.
+- One Supabase Auth identity per person. Do not create separate authentication systems or credential tables for Super Admins, Managers, and Employees.
+- A user's verified role and team assignments determine resource access.
+- Backend authorization checks and Supabase RLS policies are the sole authorities for access control. The frontend must never be trusted as proof of authorization.
 
-### 2. Supported Roles
+### 2. Supported Roles & Hierarchy
 
-TrackMe has three primary organization roles:
+TrackMe enforces three distinct roles with explicit boundaries:
 
-- **Owner (Admin):** The company owner who initializes and controls the organization's workspace. Use the existing `owner` role in `organization_members` for this role.
-- **Manager:** A user assigned by the Owner to manage one or more specific teams. Use the `manager` role.
-- **Employee:** A user who joins a team through an invitation and uses the employee dashboard. Use the `member` role.
+1. **Super Admin (`super_admin`):**
+   - Platform/executive administrator managing organizations, teams, manager approvals, and executive reports.
+   - Controls team creation, organization configuration, and manager team assignments.
+   - Has **NO direct interaction, assignment, or management scope with individual employees**.
+2. **Manager (`manager`):**
+   - Self-registered team supervisor.
+   - Enters a `pending` state upon registration and cannot view team telemetry or manager tools until approved by Super Admin.
+   - Once approved and assigned to one or more teams, manages team employees directly, issues employee registration invitations, monitors team telemetry, and submits daily reports for executive review.
+   - Teams support **Co-Managers / Multi-Manager configurations**, allowing multiple managers to oversee a shared team.
+3. **Employee (`member`):**
+   - Team worker registered via a Manager-issued Team Registration Code.
+   - Telemetry (ticks, sessions, breaks) is captured via the WebExtension and accessible to assigned team managers.
+   - Cannot access manager or super admin dashboards.
 
-Keep the existing `admin` role only if the application has a distinct need for an additional organization administrator. Do not confuse a platform-level administrator with an organization owner. Do not let users select or assign their own roles.
+---
 
-### 3. Organization Initialization and Owner Registration
+### 3. Strict Super Admin Scope & Boundaries
 
-- Provide a secure organization-initialization flow.
-- The first user who creates an organization becomes its `owner`.
-- Collect the required organization details and the owner's account details.
-- Create the organization and its owner membership safely and atomically where practical.
-- The owner receives access to the organization-wide dashboard and management features.
-- Prevent an ordinary visitor from claiming an existing organization or creating an owner membership for an organization they do not own.
-- If the product supports multiple organizations per user, make the active organization context explicit and validate membership in it on every request.
+Super Admin capabilities are strictly limited to organizational governance, manager approvals, team assignments, and executive report oversight:
 
-**Owner permissions:**
+**Permitted Super Admin Operations:**
+- Create, configure, style (color accents), and manage Organizations and Teams.
+- Review pending self-registered managers in the Admin Portal (`/admin/dashboard`) and transition their status: grant approval (`approved`) or rejection (`rejected`).
+- Assign and unassign approved managers across teams (supporting multiple co-managers per team and multi-team manager assignments via `organization_members` and `team_members`).
+- Review executive daily team progress reports and export platform-wide audit logs (`/api/v1/admin/export-audit`).
 
-- View and manage organization-wide information.
-- Create, edit, deactivate, and delete teams, subject to data-retention requirements.
-- Create manager invitations and assign managers to teams before they register.
-- Change manager-to-team assignments.
-- Manage organization members and their active status.
-- Manage organization-level settings.
-- Access all teams and their data within their own organization, but never another organization's data.
+**Strict Super Admin Boundaries & Absolute Prohibitions:**
+- **ZERO Direct Employee Scope**: Super Admin has **NO direct interaction, assignment, or CRUD actions over individual employees**. Super Admin cannot create employee accounts, issue employee invitations, assign employees to teams, edit employee time records, or view individual employee telemetry sessions. Employees are managed exclusively by their assigned team Managers.
+- **NO Manual Manager Account Creation or Pre-Provisioning**: Super Admin **CANNOT manually create, invite, or pre-provision manager accounts or placeholder slots**. All managers must self-register.
+- **NO Assignment of Unregistered / Placeholder Users**: Super Admin **CANNOT assign an unregistered user, pending manager, or placeholder account to any team**. Only registered users with verified `approval_status = 'approved'` and `role = 'manager'` can be assigned to teams.
 
-### 4. Team Management and Relationships
+---
 
-- An Owner can create multiple teams within their organization.
-- Every team must belong to exactly one organization.
-- A team should have a name, optional description, status, and timestamps.
-- A team can have multiple managers.
-- A manager can be assigned to multiple teams.
-- Employees should belong to one team by default. Keep the data model extensible if future requirements allow employees to belong to multiple teams.
-- Store team membership and manager assignments in explicit relational records (for example, `team_members` or separate `team_managers` and `team_employees` tables).
-- Validate that the team, user, and organization all belong together before creating or changing an assignment.
+### 4. Manager Onboarding & Approval Flow
 
-### 5. Manager Invitation and Registration
+Managers follow an autonomous self-registration and administrative approval pipeline:
 
-Managers cannot register freely or choose their own team assignments.
+1. **Mandatory Self-Registration (`/register`)**:
+   - Managers **MUST self-register** via the public registration flow (`/register`).
+   - Super Admin cannot create, pre-create, pre-seed, or provision manager credentials or profile slots.
+   - During signup, the registrant provides full name, username, email, and password.
+2. **Initial `pending` Gated State**:
+   - Upon successful signup, the manager account is initialized with `role = 'manager'` and `approval_status = 'pending'`.
+   - **Gated Restrictions**: Newly registered managers start with `approval_status = 'pending'` and are strictly blocked from viewing team telemetry, timesheets, employee data, or manager controls until approved by Super Admin.
+   - Attempts to access `/dashboard/manager` or telemetry APIs return a pending approval notice.
+3. **Super Admin Review & Approval (`/admin/dashboard`)**:
+   - Super Admin reviews pending manager signups in the Admin Portal approval queue.
+   - Super Admin evaluates applicant details and approves (`approved`) or rejects (`rejected`) the registration.
+   - Approval transitions `approval_status` from `'pending'` to `'approved'`.
+4. **Team Assignment**:
+   - Only after approval can the manager be assigned to one or more teams by the Super Admin.
+   - Super Admin **CANNOT assign an unregistered user, pending applicant, or placeholder account to any team**.
 
-**Owner workflow:**
+---
 
-- The Owner creates a manager invitation.
-- The Owner can specify the intended manager's email or other identity details if the product requires it.
-- The Owner selects one or more existing teams to assign to that manager.
-- The system generates a unique, high-entropy Manager Registration Code.
-- The Owner shares the invitation securely with the intended manager.
-- The invitation must be associated with the Owner's organization and the selected team assignments.
+### 5. Multi-Manager Team Support (Co-Managers)
 
-**Manager workflow:**
+- **Elimination of 1-to-1 Manager Constraint**: Multiple approved managers can be assigned to a single team or organization via `organization_members` (`role = 'manager'`, `approval_status = 'approved'`) and `team_members` (`role = 'manager'`).
+- **Flexible Hierarchy**: An individual approved manager can be assigned to multiple teams.
+- **Super Admin Governance**: Super Admin handles assigning and unassigning approved managers across teams from `/admin/dashboard`.
+- **Shared Supervisory Scope**: All managers assigned to a team share managerial authority for that team:
+  - Access to live telemetry, timesheets, and active status for all employees in that team.
+  - Ability to generate Team Registration Codes for onboarding employees into that team.
+  - Ability to review and approve time audits for that team.
+  - Ability to upload daily team progress reports for Super Admin executive review.
+- **Immediate Revocation**: When a manager is unassigned from a team by Super Admin, access to that team's employee telemetry, timesheets, and management tools is immediately revoked.
 
-- The manager opens the registration page and enters the invitation code.
-- The manager provides the required account details, including a username and password (and email if required by Supabase Auth configuration).
-- The backend validates the invitation before allowing registration.
-- If the invitation is valid, active, unexpired, and has available uses, registration may proceed.
-- If the code is invalid, expired, revoked, or exhausted, reject registration with a clear error.
-- After successful registration, create the user's profile and `manager` organization membership, then apply the team assignments stored in the invitation.
-- Never accept team assignments or a role supplied by the registration form as authoritative.
-- A manager cannot promote themselves, change their own role, or assign themselves to additional teams.
-- Managers can access only the teams currently assigned to them.
+---
 
-### 6. Employee Invitation and Registration
+### 6. Employee Invitation & Registration Flow
 
-Employees cannot register without a valid team invitation.
+Employees are managed entirely at the team level by assigned managers:
 
-**Manager workflow:**
+1. **Manager Invitation Creation**:
+   - An approved manager selects their assigned team and generates a Team Registration Code.
+   - The code is cryptographically random, hashed in the database, and scoped specifically to the manager's organization and team.
+   - The manager configures code expiration and usage limits.
+   - Super Admin does not issue employee invitation codes.
+2. **Employee Registration (`/register`)**:
+   - The employee navigates to `/register` and provides the Team Registration Code, full name, username, and password.
+   - The backend validates the code (ensuring it is unexpired, unrevoked, and within usage limits).
+   - Upon successful creation, the employee is assigned `role = 'member'`, automatically linked to the team and organization from the invitation, and granted access to the employee dashboard (`/dashboard`).
+3. **Employee Team Boundaries**:
+   - Employees belong to their assigned team and are managed directly by that team's assigned managers.
+   - Employees cannot modify their role, organization, or team assignment.
 
-- A manager selects a team to which they are currently assigned.
-- The manager creates an Employee Registration Code for that specific team.
-- The invitation is scoped to the manager's organization and the selected team.
-- The manager can set an expiration date and usage limit where supported.
-- The manager shares the code securely with the intended employee.
-- The backend must verify that the manager is still authorized to invite employees to that team.
+---
 
-**Employee workflow:**
+### 7. Single Shared Login System & Routing
 
-- The employee opens the registration page and enters the Team Registration Code.
-- The employee provides the required account details, including a username and password (and email if required by Supabase Auth configuration).
-- The backend validates the invitation.
-- If valid, the employee can complete registration.
-- After successful registration, create the user's profile and `member` organization membership, and automatically associate the employee with the team linked to the invitation.
-- Never accept an organization ID, team ID, or role from the registration form as authoritative.
-- If the code is invalid, expired, revoked, or exhausted, reject registration with a clear error.
-- Employees cannot choose or change their own organization, role, or team assignments during registration.
+TrackMe uses a unified login page (`/login`) for all users regardless of role:
 
-### 7. Single Login System
+**Credentials**: Username (or email) and Password. Users do not select a role on login.
 
-Use one login page and one authentication flow for Owners, Managers, and Employees.
+**Server-Side Authentication & Routing Workflow**:
+1. User submits credentials.
+2. Server authenticates identity against Supabase Auth.
+3. Server queries `profiles` and `organization_members` for the verified role and `approval_status`.
+4. Route decision:
+   - `super_admin` → Redirect to Super Admin Portal (`/admin/dashboard`).
+   - `manager`:
+     - If `approval_status === 'approved'` → Redirect to Manager Dashboard (`/dashboard/manager`).
+     - If `approval_status === 'pending'` → Routed to a Pending Approval notice page; access to `/dashboard/manager` and all telemetry APIs is blocked.
+   - `member` → Redirect to Employee Dashboard (`/dashboard`).
+5. Inactive or suspended accounts are denied access.
 
-**Login fields:**
+---
 
-- Username
-- Password
+### 8. Role-Based Permissions Matrix
 
-Do not ask users to select their role during login. A role selector is unnecessary and must never be used as an authorization mechanism.
+| Capability | Super Admin (`super_admin`) | Manager (`manager` - Approved) | Employee (`member`) |
+|---|---|---|---|
+| Manage Organizations & Teams | Full control | None | None |
+| Approve Pending Managers | Full control (`/admin/dashboard`) | None | None |
+| Assign Managers to Teams (Co-Managers) | Full control | None | None |
+| Create / Pre-create Manager Accounts | **Prohibited** (Self-registration only) | None | None |
+| Direct Employee Assignment / Management | **Prohibited** (Manager scope only) | Full control (Assigned teams) | None |
+| Issue Employee Registration Codes | None | Full control (Assigned teams) | None |
+| View Team Telemetry & Timelines | None | Full control (Assigned teams) | None |
+| Time Audit Approvals | None | Full control (Assigned teams) | None |
+| Upload Daily Team Reports | None | Full control (Assigned teams) | None |
+| Review Executive Reports & Audit Logs | Full control | None | None |
+| Personal Telemetry (Clock In/Out/Break) | None | Optional | Own sessions only |
 
-**Login flow:**
+---
 
-1. The user enters their username and password.
-2. Resolve the username to the corresponding Supabase Auth identity using a secure server-side mechanism, or use email as the Supabase Auth identifier if that is the established project convention. Never expose privileged service-role credentials to the browser.
-3. Authenticate using Supabase Auth.
-4. Retrieve the user's profile, organization membership, role, account status, and team assignments from trusted database records.
-5. Establish the authenticated session using the project's secure Supabase SSR/session pattern.
-6. Redirect the user according to their actual role:
-   - `owner` → Owner/Admin Dashboard.
-   - `manager` → Manager Dashboard.
-   - `member` → Employee Dashboard.
-7. If the account is inactive, suspended, or no longer a member of the organization, deny access to protected functionality and handle the session appropriately.
+### 9. Database Model & Supabase Schema Requirements
 
-The frontend may use the role to choose a dashboard experience, but every backend operation and database query must independently enforce authorization.
+Extend the Supabase schema maintaining strict relational integrity:
 
-### 8. Role-Based Permissions
+- `auth.users`: Supabase Auth identity records.
+- `profiles`:
+  - `id` (UUID references `auth.users.id`)
+  - `full_name`, `username`, `email`, `avatar_url`
+  - `role`: `'super_admin' | 'manager' | 'member'`
+  - `approval_status`: `'pending' | 'approved' | 'rejected'`
+- `organizations`:
+  - `id`, `name`, `slug`, `team_code`, `color`, `require_approval`, timestamps
+- `organization_members`:
+  - `organization_id`, `user_id`, `role`, `approval_status`
+  - Unique composite key on `(organization_id, user_id)`
+  - Supports multiple managers per organization.
+- `teams`:
+  - `id`, `organization_id`, `name`, `description`, `status`, timestamps
+- `team_members`:
+  - `team_id`, `user_id`, `role` (`'manager' | 'member'`)
+  - Unique composite key on `(team_id, user_id)`
+  - Allows multiple managers per team (co-managers) and managers assigned to multiple teams.
+- `invitations`:
+  - `id`, `code_hash`, `organization_id`, `team_id`, `created_by`, `role` (`'member'`), `expires_at`, `max_uses`, `uses_count`, `is_revoked`, timestamps
+  - Reserved exclusively for Employee team invitations.
+- `daily_reports`:
+  - `id`, `organization_id`, `team_id`, `manager_id`, `file_url`, `file_name`, `file_type`, `file_size`, `notes`, `created_at`
 
-**Owner (`owner`):**
+---
 
-- Access organization-wide information and all teams within that organization.
-- Create and manage teams.
-- Create manager invitations and assign managers to teams.
-- Manage organization members, assignments, and settings.
-- Perform owner-only administrative actions.
+### 10. Multi-Tenant Isolation & Supabase RLS
 
-**Manager (`manager`):**
+Tenant and role isolation must be guaranteed at the database layer via PostgreSQL Row Level Security:
 
-- Access only teams assigned to them.
-- View the live status and permitted telemetry of employees in those teams.
-- View team activity timelines and time records.
-- Create employee invitations only for teams assigned to them.
-- Perform permitted employee and time-audit management actions for their assigned teams.
-- Cannot access organization-wide owner functionality.
-- Cannot modify their own role or manager-team assignments.
-- Cannot access another manager's teams unless separately assigned.
+- **Super Admin Access**:
+  - Validated via `public.is_super_admin()` helper function checking authenticated user role.
+  - Can read and manage `organizations`, `teams`, `organization_members`, and manager `profiles`.
+  - Can read `daily_reports` and audit tables for executive oversight.
+  - RLS policies must prevent Super Admin from directly modifying or inserting into employee-exclusive tables (`work_sessions`, `activity_events`, `time_entries`) on behalf of employees.
+- **Manager Access**:
+  - Gated by `approval_status = 'approved'` and assignment in `team_members` or `organization_members`.
+  - Can view telemetry, activity events, and sessions **only** for employees in their assigned teams.
+  - Can insert invitations only for teams where they are an assigned manager.
+  - Cannot access data belonging to other managers' unassigned teams or other organizations.
+- **Employee Access**:
+  - Can view and manage only their own telemetry, sessions, and time records (`user_id = auth.uid()`).
+  - Cannot view team-wide telemetry or other employees' data.
 
-**Employee (`member`):**
+---
 
-- Access their own employee dashboard, session statistics, and permitted personal information.
-- Access only team resources explicitly permitted to employees.
-- Cannot access owner or manager functionality.
-- Cannot view another team's restricted information.
-- Cannot change their own role, organization membership, or team assignment.
+### 11. Account, Membership, and Assignment Lifecycle
 
-Define permissions explicitly and enforce them on the server/database. Hiding frontend links or protecting frontend routes alone is not sufficient.
+1. **Manager Lifecycle**:
+   - Register (`/register`) → Status: `pending` (blocked from telemetry/tools).
+   - Super Admin reviews in `/admin/dashboard` → Status: `approved`.
+   - Super Admin assigns to Team A (and optionally Team B) → Co-Manager relationship created in `team_members`.
+   - Active: Manager oversees team, invites employees, uploads daily reports.
+   - Deassignment / Deactivation: Super Admin unassigns or deactivates; team access is revoked immediately.
+2. **Employee Lifecycle**:
+   - Manager generates Team Registration Code.
+   - Employee registers (`/register`) using code → Immediate team assignment as `member`.
+   - Active: Telemetry collected via WebExtension and reviewed by assigned team managers.
+   - Removal: Manager removes employee from team; access to team data revoked immediately while preserving telemetry history for audit and payroll compliance.
 
-### 9. Invitation Code Security and Lifecycle
+---
 
-- Generate invitation codes using a cryptographically secure random generator with sufficient entropy.
-- Display the raw code only when it is created, so it can be shared with the intended recipient.
-- Store only a secure hash of each code; never store or return raw codes in normal database reads.
-- Support expiration, revocation, and configurable usage limits.
-- Track invitation type (`manager` or `employee`), organization, associated team(s), creator, status, usage count, and timestamps.
-- Validate the invitation and consume a use atomically with account creation to prevent concurrent requests from exceeding the usage limit.
-- Prevent reuse of revoked, expired, or exhausted invitations.
-- Do not expose invitation codes, hashes, or privileged details in logs, analytics, client responses, or error messages.
-- Verify that the invitation creator is authorized for the organization and team scope.
-- Provide clear but non-sensitive registration errors.
+### 12. Legacy Architecture Deprecation & Clean Up Rules
 
-### 10. Database Model and Existing Supabase Schema
+The following legacy patterns are strictly deprecated, abolished, and prohibited across all code and database layers:
 
-Extend the existing schema rather than creating a parallel authentication model.
+1. **NO Pre-Approved Manager Slots**:
+   - Abolished: Pre-creating profile rows or slots before auth user signup (`provision_manager_slot`).
+   - All manager rows in `profiles` and `organization_members` must originate from authentic Supabase Auth self-registration (`auth.users.id`).
+2. **NO Slot Claiming Flows**:
+   - Abolished: Claiming pre-approved manager slots upon registration (`claim_preapproved_manager`).
+   - Registration creates a standard manager profile with `approval_status = 'pending'`.
+3. **NO Placeholder Accounts**:
+   - Abolished: Placeholder or mock manager accounts (e.g., "Bob Manager", placeholder profiles without corresponding `auth.users` identities).
+   - Super Admin dashboard must never render or manage placeholder slots.
+4. **NO Admin-Created or Pre-Provisioned Manager Credentials**:
+   - Super Admin cannot create manager accounts, invite managers, or generate manager credentials. Managers MUST self-register via `/register`.
+5. **NO Unregistered User Team Assignments**:
+   - Super Admin cannot assign an unregistered user or placeholder account to any team. Only users with an active `auth.users` account, `role = 'manager'`, and `approval_status = 'approved'` can be assigned.
+6. **NO 1-to-1 Manager Constraint**:
+   - Multiple approved managers can be assigned to a single team/organization via `organization_members` (`role = 'manager'`, `approval_status = 'approved'`) and `team_members`.
+7. **NO Super Admin Employee CRUD**:
+   - Super Admin has ZERO direct management, assignment, or CRUD actions over individual employees. Employees are managed exclusively by their team's Managers.
 
-- `auth.users` (Supabase Auth): Authentication identities and credential management.
-- `profiles`: Application profile data linked to `auth.users.id`.
-- `organizations`: Company/workspace records.
-- `organization_members`: User-to-organization membership and role (`owner`, `admin` if genuinely needed, `manager`, `member`).
-- `teams`: Teams linked to an organization.
-- `team_members` (or separate `team_managers` and `team_employees`): Explicit user-to-team relationships and assignment records.
-- `invitations`: Hashed registration codes, invitation type, organization/team scope, creator, assigned team IDs for manager invitations, expiration, usage limit/count, status, and timestamps.
-- Existing telemetry tables (`work_sessions`, `activity_events`, `time_entries`, and `projects`) must retain their organization/team ownership relationships and be protected by the same access rules.
+---
 
-Use foreign keys, indexes, unique constraints, and database validation where appropriate. Avoid duplicating authentication credentials in `profiles` or any other application table. Passwords must remain managed by Supabase Auth.
+### 13. Verification & Testing Requirements
 
-For the initial product behavior, employees should belong to one team. Managers may belong to multiple teams. Choose the simplest relational schema that supports these rules without blocking future extension.
-
-### 11. Multi-Tenant Isolation and Supabase RLS
-
-Tenant isolation is a critical security requirement.
-
-- Every organization-owned resource must be associated with an `organization_id`.
-- Every team must be associated with exactly one organization.
-- Every membership and team assignment must be validated against the same organization.
-- Owners can access resources only within their own organization.
-- Managers can access only resources belonging to their assigned teams within their organization.
-- Employees can access only their own permitted data and resources belonging to their assigned team.
-- Enforce these rules with Supabase Row-Level Security (RLS) policies and server-side authorization checks.
-- Never trust an `organization_id`, `team_id`, `user_id`, or role sent by the browser as proof of access.
-- Derive the authenticated user identity from the verified Supabase session.
-- Validate resource ownership and team assignment in every protected query and mutation.
-- Prevent IDOR vulnerabilities, including attempts to access another organization's records by changing URL parameters or request payload IDs.
-- Never expose `SUPABASE_SERVICE_ROLE_KEY` to client-side code. Any server-side use of the service role must be narrowly scoped and must perform explicit authorization checks because it bypasses RLS.
-- Keep Realtime subscriptions scoped to authorized organization/team data, and ensure RLS also protects the underlying rows.
-
-### 12. Account, Membership, and Assignment Lifecycle
-
-Support the following administrative operations:
-
-- Activate and deactivate organization members.
-- Revoke unused invitations.
-- Expire invitations automatically based on their expiration timestamp.
-- Change manager-to-team assignments through the Owner.
-- Remove employees from teams through authorized management actions.
-- Remove or deactivate managers and employees.
-- Immediately deny protected access when a user is deactivated or loses the relevant organization/team membership.
-- Preserve telemetry and time records according to the product's retention and audit requirements when a membership is removed.
-- Record important security and administrative actions in an audit log where appropriate.
-
-When a manager loses assignment to a team, their access to that team's data must be revoked immediately. When an employee is removed from a team, their access to that team's restricted resources must also be revoked.
-
-### 13. Implementation Expectations
-
-Before changing code or database schema:
-
-- Inspect the existing Supabase schema, migrations, RLS policies, authentication utilities, middleware/proxy, server actions, API routes, and dashboard routing.
-- Reuse the existing project architecture and conventions.
-- Do not create duplicate tables or a second authentication system if equivalent structures already exist.
-- Identify conflicts between the current schema and these requirements, then propose the smallest safe migration.
-- Implement schema changes through version-controlled Supabase migrations.
-- Add or update RLS policies and indexes as part of the migrations.
-- Keep authentication, authorization, invitation management, organization management, and team management logically separated.
-- Validate all inputs on the server.
-- Use secure password and session handling through Supabase Auth.
-- Never trust frontend-supplied roles, organization IDs, or team assignments.
-- Add tests for valid/invalid/expired/revoked invitations, usage limits, role permissions, cross-tenant access, cross-team access, inactive accounts, and concurrent invitation redemption.
-- Ensure the browser extension's authentication and event ingestion use the same verified user identity and enforce organization/team authorization.
-- Do not weaken existing telemetry idempotency, RLS, or privacy controls while implementing authentication.
-
-Implement the complete registration, invitation, login, dashboard-routing, and authorization workflows—not just their UI screens.
-
-**Final architectural principle:** TrackMe must use one Supabase Auth identity per user, one shared application user/profile model, organization memberships for roles, explicit team assignments, invitation-based registration, and backend/database-enforced authorization. The frontend must never be the source of truth for a user's role or access.
+Autonomous workflows and developer verification must validate:
+1. `npx tsc --noEmit`: Typecheck passes across the entire project.
+2. `npm run lint`: ESLint passes with 0 errors and 0 warnings.
+3. `npm test`: Vitest test suite passes all unit, RBAC, telemetry, and time accounting tests.
+4. `npm run build`: Next.js production build succeeds.
+5. **RBAC Verification**:
+   - Verify self-registration leaves manager in `pending` status.
+   - Verify pending manager cannot access `/dashboard/manager`, telemetry sync, or timesheets.
+   - Verify Super Admin cannot manually create or pre-provision manager accounts.
+   - Verify Super Admin cannot assign unregistered, pending, or placeholder accounts to teams.
+   - Verify Super Admin can assign multiple managers (co-managers) to a team via `organization_members` & `team_members`.
+   - Verify Super Admin has no direct employee management actions or endpoints.
