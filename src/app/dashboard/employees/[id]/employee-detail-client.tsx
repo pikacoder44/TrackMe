@@ -43,7 +43,6 @@ export function EmployeeDetailClient({
 }: EmployeeDetailClientProps) {
   const router = useRouter()
 
-  // Realtime subscription: refresh when activity events or work sessions change for this organization
   useEffect(() => {
     const supabase = createClient()
 
@@ -81,12 +80,10 @@ export function EmployeeDetailClient({
     }
   }, [employee.userId, organizationId, router])
 
-  // Filter events specifically for this employee
   const employeeEvents = useMemo(() => {
     return rawEvents.filter((e) => e.userId === employee.userId)
   }, [rawEvents, employee.userId])
 
-  // Aggregate app & website usage
   const appUsage = useMemo(() => {
     return aggregateEventsToAppUsage(
       employeeEvents.map((e) => ({
@@ -96,7 +93,6 @@ export function EmployeeDetailClient({
     )
   }, [employeeEvents])
 
-  // Productivity score calculation
   const productivityScore = useMemo(() => {
     const totalSec = appUsage.entries.reduce((s, e) => s + e.seconds, 0)
     const productiveSec = appUsage.entries
@@ -109,7 +105,6 @@ export function EmployeeDetailClient({
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-12">
-      {/* 1. Navigation & Breadcrumb Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b pb-4">
         <div className="flex items-center gap-3">
           <Link
@@ -137,10 +132,8 @@ export function EmployeeDetailClient({
         </div>
       </div>
 
-      {/* 2. Employee Profile & Live Status Banner */}
       <div className="bg-card border rounded-2xl p-6 shadow-sm space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-          {/* Left: Avatar, Name, Email, Role, Status */}
           <div className="flex items-center gap-4">
             <div className="h-16 w-16 rounded-2xl bg-primary/10 text-primary border border-primary/20 flex items-center justify-center font-bold text-xl uppercase shadow-inner shrink-0">
               {employee.name.slice(0, 2)}
@@ -153,7 +146,6 @@ export function EmployeeDetailClient({
                 <span className="text-xs font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-muted text-muted-foreground">
                   {employee.role}
                 </span>
-                {/* Live Status Badge */}
                 <span
                   className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider px-3 py-1 rounded-full shadow-2xs"
                   style={{ background: statusConfig.bg, color: statusConfig.text }}
@@ -169,7 +161,6 @@ export function EmployeeDetailClient({
             </div>
           </div>
 
-          {/* Right: Elapsed Session Timer & Active Session Details */}
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
             {employee.startedAt && employee.status !== 'offline' ? (
               <div className="bg-muted/40 border rounded-xl p-3.5 flex items-center gap-3 min-w-[200px]">
@@ -197,7 +188,6 @@ export function EmployeeDetailClient({
           </div>
         </div>
 
-        {/* Current Active App / Focused Window Banner */}
         <div className="border-t pt-4">
           <p className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground flex items-center gap-1.5 mb-2">
             <Activity className="w-3.5 h-3.5 text-primary" />
@@ -242,9 +232,7 @@ export function EmployeeDetailClient({
         </div>
       </div>
 
-      {/* 3. Overview Metric Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Total Working Time */}
         <div className="bg-card border rounded-2xl p-5 shadow-sm space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs uppercase font-bold tracking-wider text-muted-foreground">
@@ -264,7 +252,6 @@ export function EmployeeDetailClient({
           </div>
         </div>
 
-        {/* Total Idle Time */}
         <div className="bg-card border rounded-2xl p-5 shadow-sm space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs uppercase font-bold tracking-wider text-muted-foreground">
@@ -284,7 +271,6 @@ export function EmployeeDetailClient({
           </div>
         </div>
 
-        {/* Overall Productivity Score */}
         <div className="bg-card border rounded-2xl p-5 shadow-sm space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs uppercase font-bold tracking-wider text-muted-foreground">
@@ -301,7 +287,6 @@ export function EmployeeDetailClient({
               </p>
               <span className="text-xs text-muted-foreground">rated productive</span>
             </div>
-            {/* Visual Mini Progress Bar */}
             <div className="w-full bg-muted rounded-full h-1.5 mt-2.5 overflow-hidden">
               <div
                 className="bg-violet-600 h-1.5 rounded-full transition-all duration-300"
@@ -312,7 +297,6 @@ export function EmployeeDetailClient({
         </div>
       </div>
 
-      {/* 4. Full-Width App & Website Usage Table */}
       <div className="bg-card border rounded-2xl shadow-sm overflow-hidden space-y-4 p-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-4">
           <div>
@@ -368,7 +352,6 @@ export function EmployeeDetailClient({
 
                   return (
                     <tr key={entry.app} className="hover:bg-muted/20 transition-colors">
-                      {/* Domain / App Name */}
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-3">
                           <span className="text-lg leading-none shrink-0" aria-hidden>
@@ -382,12 +365,10 @@ export function EmployeeDetailClient({
                         </div>
                       </td>
 
-                      {/* Category */}
                       <td className="py-3.5 px-4 text-muted-foreground font-medium">
                         {entry.category}
                       </td>
 
-                      {/* Productivity Tag */}
                       <td className="py-3.5 px-4">
                         <span
                           className={`inline-block text-[11px] font-semibold px-2.5 py-0.5 rounded-full ${pStyle.bg} ${pStyle.text}`}
@@ -396,7 +377,6 @@ export function EmployeeDetailClient({
                         </span>
                       </td>
 
-                      {/* Activity Level % */}
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <div className="w-16 bg-muted rounded-full h-1.5 hidden sm:block overflow-hidden">
@@ -414,12 +394,10 @@ export function EmployeeDetailClient({
                         </div>
                       </td>
 
-                      {/* Inactive % */}
                       <td className="py-3.5 px-4 text-right font-mono text-muted-foreground">
                         {entry.inactivePct}%
                       </td>
 
-                      {/* Total Duration HH:MM:SS */}
                       <td className="py-3.5 px-4 text-right font-mono font-bold text-foreground text-sm">
                         {formatDurationHHMMSS(entry.seconds)}
                       </td>
@@ -432,7 +410,6 @@ export function EmployeeDetailClient({
         )}
       </div>
 
-      {/* 5. Live Chronological Activity Stream */}
       <div className="bg-card border rounded-2xl shadow-sm p-6 space-y-4">
         <div className="flex items-center justify-between border-b pb-4">
           <div>

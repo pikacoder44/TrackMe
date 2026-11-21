@@ -34,7 +34,6 @@ export default async function EmployeeDetailPage({
 
   if (!user) redirect('/login')
 
-  // Fetch current user's organization membership
   const { data: membership } = await supabase
     .from('organization_members')
     .select('role, organization_id, organization:organizations(id, name)')
@@ -50,7 +49,6 @@ export default async function EmployeeDetailPage({
     (membership.organization as unknown as { id: string; name: string } | null)?.name ??
     'Organization'
 
-  // Fetch the target employee from the same organization
   const { data: targetMemberData } = await supabase
     .from('organization_members')
     .select('user_id, role, profile:profiles(full_name, email)')
@@ -83,7 +81,6 @@ export default async function EmployeeDetailPage({
     )
   }
 
-  // Fetch active session and recent telemetry events (last 12 hours)
   // eslint-disable-next-line react-hooks/purity
   const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString()
 
@@ -106,7 +103,6 @@ export default async function EmployeeDetailPage({
 
   const activeSession = sessionResult.data as WorkSession | null
 
-  // Extract raw activity events with fallback for schema resilience
   const rawEvents: ManagerActivityEvent[] = (eventsResult.data ?? []).map((e: {
     id: string
     user_id: string

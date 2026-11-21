@@ -29,7 +29,6 @@ export default async function DashboardLayout({
     redirect('/login')
   }
 
-  // Fetch profile and organization memberships concurrently using admin client to guarantee hydration
   const [profileResult, membershipsResult] = await Promise.all([
     supabase
       .from('profiles')
@@ -47,7 +46,6 @@ export default async function DashboardLayout({
   const profile = profileResult.data
   let typedMemberships = (membershipsResult.data as unknown as MembershipWithOrg[]) || []
 
-  // Fallback: If no organization membership found, check for a legacy profile slot
   if (typedMemberships.length === 0) {
     const adminClient = adminSupabase
     if (adminClient) {
@@ -115,7 +113,6 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex min-h-screen bg-muted/20">
-      {/* Sidebar */}
       <aside className="w-64 border-r bg-background flex flex-col justify-between p-4">
         <div className="space-y-6">
           <div className="flex items-center gap-2 px-2 py-1">
@@ -157,7 +154,6 @@ export default async function DashboardLayout({
         </div>
       </aside>
 
-      {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
         <header className="h-14 border-b bg-background px-6 flex items-center justify-between">
           <span className="inline-flex items-center gap-1.5 text-[11px] font-bold tracking-wider uppercase px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">

@@ -51,7 +51,7 @@ export function TeamCodeForm({
       setIsCopiedCode(true)
       setTimeout(() => setIsCopiedCode(false), 2000)
     } catch {
-      // Fallback
+      // Ignored
     }
   }
 
@@ -63,7 +63,7 @@ export function TeamCodeForm({
       setIsCopiedLink(true)
       setTimeout(() => setIsCopiedLink(false), 2500)
     } catch {
-      // Fallback
+      // Ignored
     }
   }
 
@@ -160,7 +160,6 @@ export function TeamCodeForm({
         </div>
       )}
 
-      {/* 1. Team Join Link & Onboarding Card */}
       <Card className="border-border/60 shadow-sm">
         <CardHeader className="space-y-1">
           <div className="flex items-center gap-2">
@@ -176,7 +175,6 @@ export function TeamCodeForm({
           </div>
         </CardHeader>
         <CardContent className="space-y-5">
-          {/* Direct Link Display */}
           <div className="p-4 rounded-xl border bg-muted/40 space-y-2">
             <span className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">
               Permanent Team Join Route
@@ -198,7 +196,6 @@ export function TeamCodeForm({
             </div>
           </div>
 
-          {/* Quick Email Invite */}
           <form onSubmit={handleSendInvite} className="space-y-2">
             <label htmlFor="inviteEmail" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Direct Employee Invite
@@ -224,7 +221,6 @@ export function TeamCodeForm({
         </CardContent>
       </Card>
 
-      {/* 2. Optional Manager Approval Toggle Card */}
       <Card className="border-border/60 shadow-sm">
         <CardHeader className="space-y-1">
           <div className="flex items-center gap-2">
@@ -273,7 +269,6 @@ export function TeamCodeForm({
         </CardContent>
       </Card>
 
-      {/* 3. Secret Team Code Configuration */}
       <Card className="border-border/60 shadow-sm">
         <CardHeader className="space-y-1">
           <div className="flex items-center gap-2">

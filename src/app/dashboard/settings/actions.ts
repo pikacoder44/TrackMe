@@ -69,7 +69,6 @@ export async function regenerateTeamCode(organizationId: string) {
   try {
     const { supabase } = await getManagerContext(organizationId)
 
-    // Generate random 4-digit TRACK-XXXX code
     const randomDigits = Math.floor(1000 + Math.random() * 9000).toString()
     const newCode = `TRACK-${randomDigits}`
 
@@ -127,7 +126,6 @@ export async function sendEmployeeInviteAction(organizationId: string, email: st
   try {
     const { supabase } = await getManagerContext(organizationId)
 
-    // Verify organization exists and fetch code
     const { data: org } = await supabase
       .from('organizations')
       .select('name, team_code')
@@ -136,7 +134,6 @@ export async function sendEmployeeInviteAction(organizationId: string, email: st
 
     if (!org) return { error: 'Organization not found.' }
 
-    // If profile exists for this email, link them or check
     const { data: profile } = await supabase
       .from('profiles')
       .select('id')

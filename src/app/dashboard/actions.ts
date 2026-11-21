@@ -69,7 +69,6 @@ export async function clockOut(sessionId: string) {
   const now = new Date()
   const nowIso = now.toISOString()
 
-  // 1. Fetch the session details to compute duration for time entry
   const { data: session, error: fetchError } = await supabase
     .from('work_sessions')
     .select('id, organization_id, project_id, started_at, notes')
@@ -79,7 +78,6 @@ export async function clockOut(sessionId: string) {
 
   if (fetchError || !session) return { error: fetchError?.message || 'Session not found' }
 
-  // Sum break durations recorded in activity_events
   const { data: breakEvents } = await supabase
     .from('activity_events')
     .select('event_type, recorded_at')
@@ -103,7 +101,6 @@ export async function clockOut(sessionId: string) {
   const startMs = new Date(session.started_at).getTime()
   const durationSeconds = Math.max(0, Math.floor((now.getTime() - startMs) / 1000) - breakSeconds)
 
-  // 2. Concurrently update session and insert time entry
   const [sessionUpdateResult, timeEntryInsertResult] = await Promise.all([
     supabase
       .from('work_sessions')
@@ -265,7 +262,6 @@ export async function uploadDailyReportAction(formData: FormData) {
     return { error: 'Please select a valid report file to upload.' }
   }
 
-  // Verify caller is a manager/owner/admin
   const { data: member } = await supabase
     .from('organization_members')
     .select('role')
@@ -284,7 +280,6 @@ export async function uploadDailyReportAction(formData: FormData) {
 
     let fileUrl = ''
 
-    // Attempt upload to Supabase Storage bucket 'daily-reports'
     const { data: uploadData, error: uploadErr } = await supabase.storage
       .from('daily-reports')
       .upload(storagePath, fileBuffer, {

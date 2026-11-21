@@ -36,7 +36,6 @@ export default async function DashboardPage() {
 
   if (!user) redirect('/login')
 
-  // Fetch current user's organization membership using admin client to ensure hydration
   const { data: userMemberships } = await adminSupabase
     .from('organization_members')
     .select('*, organization:organizations(*)')
@@ -50,7 +49,6 @@ export default async function DashboardPage() {
     organization: { id: string; name: string } | null
   }) || null
 
-  // Fallback: If no organization membership found, check for a legacy profile or team slot
   if (!membership || !membership.organization_id) {
     const adminClient = adminSupabase
     if (adminClient) {
@@ -58,7 +56,6 @@ export default async function DashboardPage() {
       const userMetadata = user.user_metadata || {}
       const usernameVal = userMetadata.username || (userEmail ? userEmail.split('@')[0] : '')
 
-      // Query profiles for any matching slot that has an organization_id or legacy association
       let legacyProfileQuery = adminClient
         .from('profiles')
         .select('id, email, username, role')
@@ -75,7 +72,6 @@ export default async function DashboardPage() {
       if (legacyProfiles && legacyProfiles.length > 0) {
         const legacyProfileIds = legacyProfiles.map((p) => p.id)
 
-        // Find existing organization_members record associated with the legacy slot
         const { data: legacyMemberships } = await adminClient
           .from('organization_members')
           .select('organization_id, role, approval_status, organization:organizations(id, name)')
@@ -88,7 +84,6 @@ export default async function DashboardPage() {
         if (legacyMembership?.organization_id) {
           const orgIdToBind = legacyMembership.organization_id
 
-          // Upsert organization_members for active authenticated user
           await adminClient.from('organization_members').upsert(
             {
               organization_id: orgIdToBind,
@@ -99,7 +94,6 @@ export default async function DashboardPage() {
             { onConflict: 'organization_id,user_id' }
           )
 
-          // Update profiles table for current user using admin client
           await adminClient
             .from('profiles')
             .update({
@@ -108,7 +102,6 @@ export default async function DashboardPage() {
             })
             .eq('id', user.id)
 
-          // Clean up legacy profile placeholders to prevent duplicates
           await adminClient
             .from('profiles')
             .delete()
@@ -144,10 +137,8 @@ export default async function DashboardPage() {
     (membership.organization as unknown as { id: string; name: string } | null)?.name ??
     'Organization'
 
-  // Fetch team members, active sessions, and recent telemetry events (last 12 hours)
   // eslint-disable-next-line react-hooks/purity
   const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString()
-
   const todayDateStr = new Date().toISOString().slice(0, 10)
 
   const [membersResult, sessionsResult, todayReportResult] = await Promise.all([
@@ -173,7 +164,6 @@ export default async function DashboardPage() {
   const allMembers = (membersResult.data as unknown as MemberWithProfile[]) ?? []
   const activeSessions = (sessionsResult.data as WorkSession[]) ?? []
 
-  // Only fetch events for active/paused sessions to bound memory usage
   const activeSessionIds = activeSessions.map((s) => s.id)
   const eventsResult = activeSessionIds.length > 0
     ? await supabase
@@ -186,7 +176,6 @@ export default async function DashboardPage() {
         .limit(100)
     : { data: [] }
 
-  // Pending members awaiting manager approval
   const pendingMembers: PendingMember[] = allMembers
     .filter((m) => m.approval_status === 'pending')
     .map((m) => ({
@@ -198,10 +187,8 @@ export default async function DashboardPage() {
       createdAt: m.created_at ?? new Date().toISOString(),
     }))
 
-  // Only approved members appear in live telemetry status list
   const approvedMembers = allMembers.filter((m) => m.approval_status !== 'pending' && m.approval_status !== 'rejected')
 
-  // Extract raw activity events with payload fallback for schema resilience
   const rawEvents: ManagerActivityEvent[] = (eventsResult.data ?? []).map((e: {
     id: string
     user_id: string
@@ -226,13 +213,11 @@ export default async function DashboardPage() {
     }
   })
 
-  // Build session map
   const sessionByUser = new Map<string, WorkSession>()
   for (const s of activeSessions) {
     sessionByUser.set(s.user_id, s)
   }
 
-  // Latest event per user
   const latestEventByUser = new Map<string, ManagerActivityEvent>()
   for (const e of rawEvents) {
     if (!latestEventByUser.has(e.userId)) {
@@ -240,7 +225,6 @@ export default async function DashboardPage() {
     }
   }
 
-  // Build employee status list
   const employeeStatuses: EmployeeStatus[] = approvedMembers.map((m) => {
     const session = sessionByUser.get(m.user_id)
     const latestEvent = latestEventByUser.get(m.user_id)

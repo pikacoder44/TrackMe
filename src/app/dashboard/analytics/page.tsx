@@ -13,7 +13,6 @@ export default async function AnalyticsPage() {
 
   if (!user) return null
 
-  // Fetch active org
   const { data: memberships } = await supabase
     .from('organization_members')
     .select('organization_id')
@@ -34,7 +33,6 @@ export default async function AnalyticsPage() {
     )
   }
 
-  // Execute all independent org metrics queries concurrently
   const [timeEntriesResult, pendingResult, membersResult] = await Promise.all([
     supabase
       .from('time_entries')
@@ -64,12 +62,10 @@ export default async function AnalyticsPage() {
   const pendingCount = pendingResult.count
   const memberCount = membersResult.count
 
-  // Calculate Aggregates
   const entries = timeEntries || []
   const totalSeconds = entries.reduce((acc, curr) => acc + (curr.duration_seconds || 0), 0)
   const totalHours = (totalSeconds / 3600).toFixed(1)
 
-  // Project breakdown
   const projectMap: Record<string, number> = {}
   entries.forEach((e) => {
     const proj = Array.isArray(e.project) ? e.project[0] : e.project
@@ -82,7 +78,6 @@ export default async function AnalyticsPage() {
     hours: Number((sec / 3600).toFixed(1)),
   }))
 
-  // Weekly daily breakdown (last 7 days)
   const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
   const dailyMap: Record<string, number> = {}
   for (let i = 6; i >= 0; i--) {
@@ -105,7 +100,6 @@ export default async function AnalyticsPage() {
     hours: Number((sec / 3600).toFixed(1)),
   }))
 
-  // Prepare CSV entries
   const csvExportEntries: CSVEntry[] = entries.map((e) => {
     const proj = Array.isArray(e.project) ? e.project[0] : e.project
     return {
@@ -135,7 +129,6 @@ export default async function AnalyticsPage() {
         />
       </div>
 
-      {/* Summary KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-2">
@@ -186,7 +179,6 @@ export default async function AnalyticsPage() {
         </Card>
       </div>
 
-      {/* Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>

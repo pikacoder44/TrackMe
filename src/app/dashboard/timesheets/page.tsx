@@ -20,7 +20,6 @@ export default async function TimesheetsPage() {
 
   if (!user) return null
 
-  // Fetch organization membership and time entries concurrently
   const [membershipsResult, timeEntriesResult] = await Promise.all([
     supabase
       .from('organization_members')
@@ -38,7 +37,6 @@ export default async function TimesheetsPage() {
   const currentOrg = membershipsResult.data?.[0]?.organization_id
   const timeEntries = timeEntriesResult.data
 
-  // Fetch projects for modal dropdown if organization exists
   const { data: projects } = currentOrg
     ? await supabase
         .from('projects')
@@ -47,7 +45,6 @@ export default async function TimesheetsPage() {
         .eq('is_active', true)
     : { data: [] }
 
-  // Prepare CSV entries
   const csvExportEntries: CSVEntry[] = (timeEntries || []).map((e) => {
     const proj = Array.isArray(e.project) ? e.project[0] : e.project
     return {

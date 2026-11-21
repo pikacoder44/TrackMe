@@ -19,7 +19,6 @@ export default async function ApprovalsPage() {
 
   if (!user) return null
 
-  // Fetch user's membership in the active organization
   const { data: memberships } = await supabase
     .from('organization_members')
     .select('organization_id, role')
@@ -48,7 +47,6 @@ export default async function ApprovalsPage() {
     )
   }
 
-  // Query all pending time entries for this organization
   const { data: pendingEntries } = await supabase
     .from('time_entries')
     .select(`

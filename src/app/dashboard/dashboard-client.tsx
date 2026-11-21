@@ -124,7 +124,6 @@ export function TeamDashboardClient({
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'paused' | 'offline'>('all')
 
-  // Supabase Realtime: auto-refresh when events or sessions update
   useEffect(() => {
     const supabase = createClient()
 
@@ -162,19 +161,16 @@ export function TeamDashboardClient({
     }
   }, [organizationId, router])
 
-  void currentUserRole // for RBAC context
+  void currentUserRole
 
-  // Team Overview Metrics
   const teamMetrics = useMemo(() => {
     const activeCount = employeeStatuses.filter((e) => e.status === 'active').length
     const breakCount = employeeStatuses.filter((e) => e.status === 'paused').length
     const offlineCount = employeeStatuses.filter((e) => e.status === 'offline').length
 
-    // Cumulative team active working seconds (15s per active tick)
     const teamTotalSec = rawEvents.reduce((acc, e) => (e.eventType === 'active_tick' ? acc + 15 : acc), 0)
     const totalHours = (teamTotalSec / 3600).toFixed(1)
 
-    // Average team productivity
     const allAgg = aggregateEventsToAppUsage(
       rawEvents.map((e) => ({ app_name: e.appName, event_type: e.eventType }))
     )
@@ -194,7 +190,6 @@ export function TeamDashboardClient({
     }
   }, [employeeStatuses, rawEvents])
 
-  // Filtered employees for the grid
   const filteredEmployees = useMemo(() => {
     return employeeStatuses.filter((emp) => {
       const matchesSearch =
@@ -211,7 +206,6 @@ export function TeamDashboardClient({
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
-      {/* 1. Organization Supervisory Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b pb-5">
         <div>
           <div className="flex items-center gap-2">
@@ -227,7 +221,6 @@ export function TeamDashboardClient({
           </p>
         </div>
 
-        {/* Global Overview Metrics Strip */}
         <div className="flex items-center gap-3">
           <div className="bg-card border rounded-lg px-3.5 py-2 flex items-center gap-2.5 shadow-sm">
             <Users className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -261,9 +254,7 @@ export function TeamDashboardClient({
         </div>
       </div>
 
-      {/* 2. Search & Status Filter Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        {/* Status Filter Buttons */}
         <div className="flex gap-1.5 p-1 bg-muted/60 rounded-lg text-xs font-medium self-start">
           {[
             { key: 'all', label: `All (${employeeStatuses.length})` },
@@ -285,7 +276,6 @@ export function TeamDashboardClient({
           ))}
         </div>
 
-        {/* Search Bar */}
         <div className="relative w-full sm:w-64">
           <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-2.5" />
           <input
@@ -298,7 +288,6 @@ export function TeamDashboardClient({
         </div>
       </div>
 
-      {/* 3. Team Member Overview Cards Grid */}
       {filteredEmployees.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-muted-foreground border rounded-2xl bg-card">
           <Monitor className="w-10 h-10 opacity-30 mb-2" />
@@ -317,7 +306,6 @@ export function TeamDashboardClient({
                 onClick={() => router.push(`/dashboard/employees/${emp.userId}`)}
                 className="group bg-card border rounded-xl p-4.5 space-y-3.5 transition-all duration-150 cursor-pointer shadow-sm relative overflow-hidden hover:border-primary/60 hover:shadow-md"
               >
-                {/* Employee Header: Name, Email, Role, Status */}
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
@@ -331,7 +319,6 @@ export function TeamDashboardClient({
                     <p className="text-xs text-muted-foreground truncate mt-0.5">{emp.email}</p>
                   </div>
 
-                  {/* Status Pill */}
                   <span
                     className="shrink-0 inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-full shadow-2xs"
                     style={{ background: cfg.bg, color: cfg.text }}
@@ -344,7 +331,6 @@ export function TeamDashboardClient({
                   </span>
                 </div>
 
-                {/* Session Duration if clocked in */}
                 {emp.startedAt && emp.status !== 'offline' && (
                   <div className="flex items-center justify-between text-xs pt-1 border-t">
                     <span className="text-muted-foreground flex items-center gap-1.5">
@@ -357,7 +343,6 @@ export function TeamDashboardClient({
                   </div>
                 )}
 
-                {/* Current Active App / Website */}
                 <div className="pt-0.5">
                   {emp.status === 'active' && emp.lastWindow ? (
                     <div
@@ -391,7 +376,6 @@ export function TeamDashboardClient({
                   )}
                 </div>
 
-                {/* Card footer CTA */}
                 <div className="flex items-center justify-between pt-1 text-[11px] text-muted-foreground group-hover:text-primary font-medium transition-colors">
                   <span>View detailed activity dashboard</span>
                   <ExternalLink className="w-3.5 h-3.5 opacity-70 group-hover:opacity-100 transition-opacity" />
