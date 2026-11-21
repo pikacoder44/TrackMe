@@ -5,10 +5,6 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204 })
 }
 
-/** POST /api/v1/sessions/break
- * Body: { session_id, organization_id, type: 'break_start' | 'break_end' }
- * Updates session status and inserts a break activity event.
- */
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()

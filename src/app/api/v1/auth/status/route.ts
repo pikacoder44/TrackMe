@@ -6,10 +6,6 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204 })
 }
 
-/**
- * GET /api/v1/auth/status
- * Extension endpoint to check current employee authentication and approval status.
- */
 export async function GET() {
   try {
     const supabase = await createClient()

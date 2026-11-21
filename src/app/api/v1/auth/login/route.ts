@@ -6,10 +6,6 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204 })
 }
 
-/**
- * POST /api/v1/auth/login
- * Supabase token authentication endpoint for extension and external clients.
- */
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}))
@@ -26,7 +22,6 @@ export async function POST(request: Request) {
     const supabase = await createClient()
     let targetEmail = usernameOrEmail
 
-    // Resolve username to email if needed
     if (!usernameOrEmail.includes('@')) {
       const { data: resolvedEmail, error: rpcErr } = await supabase.rpc(
         'get_email_by_username',

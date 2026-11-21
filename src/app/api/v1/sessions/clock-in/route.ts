@@ -5,10 +5,6 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204 })
 }
 
-/** POST /api/v1/sessions/clock-in
- * Creates a new active work session for the authenticated user.
- * Returns { sessionId, organizationId }
- */
 export async function POST() {
   try {
     const supabase = await createClient()
@@ -21,7 +17,6 @@ export async function POST() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Fetch first org membership
     const { data: membership, error: memberError } = await supabase
       .from('organization_members')
       .select('organization_id, approval_status')
@@ -55,7 +50,7 @@ export async function POST() {
 
     const organizationId = membership.organization_id
 
-    // Upsert: complete any stale open sessions first (idempotent)
+    // Complete any stale open sessions before starting a new one
     await supabase
       .from('work_sessions')
       .update({ status: 'completed', ended_at: new Date().toISOString() })

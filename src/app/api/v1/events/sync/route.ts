@@ -40,7 +40,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Safe JSON parsing
     let body: IngestionPayload
     try {
       body = (await request.json()) as IngestionPayload
@@ -71,10 +70,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'No events to sync', count: 0 })
     }
 
-    // Resolve and validate organization_id
     let orgId = organization_id
     if (!orgId || !isValidUuid(orgId)) {
-      // Fallback: look up user's primary organization membership
       const { data: membership } = await supabase
         .from('organization_members')
         .select('organization_id')
@@ -92,10 +89,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate session_id format (must be valid UUID or null to avoid Postgres syntax error)
     const safeSessionId = isValidUuid(session_id) ? session_id : null
 
-    // Transform events with robust fallbacks
     const records = events.map((event) => {
       const idempotencyKey = isValidUuid(event.idempotency_key)
         ? event.idempotency_key
@@ -114,7 +109,6 @@ export async function POST(request: NextRequest) {
           ? event.app_name.trim()
           : 'Web Browser'
 
-      // Safe ISO timestamp
       let recordedAt = new Date().toISOString()
       if (event.timestamp) {
         const parsed = new Date(event.timestamp)
@@ -139,18 +133,13 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // Insert / Upsert with detailed try/catch and error inspection
     try {
       let { data, error } = await supabase
         .from('activity_events')
         .upsert(records, { onConflict: 'idempotency_key', ignoreDuplicates: true })
         .select('id')
 
-      // Handle foreign key error if session_id is stale / not found
       if (error && error.code === '23503' && safeSessionId) {
-        console.warn(
-          '[SYNC_WARN] Foreign key constraint on session_id failed; retrying with session_id: null'
-        )
         const fallbackRecords = records.map((r) => ({ ...r, session_id: null }))
         const retryResult = await supabase
           .from('activity_events')
@@ -160,11 +149,7 @@ export async function POST(request: NextRequest) {
         error = retryResult.error
       }
 
-      // Handle schema column missing error (e.g. PGRST204 if app_name/window_title column pending in schema cache)
       if (error && (error.code === 'PGRST204' || error.message?.includes('column'))) {
-        console.warn(
-          '[SYNC_WARN] Column missing in schema cache; retrying with app_name & window_title stored inside payload'
-        )
         const payloadOnlyRecords = records.map((r) => {
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
           const { app_name, window_title, ...rest } = r
@@ -185,9 +170,7 @@ export async function POST(request: NextRequest) {
         error = retryPayloadRes.error
       }
 
-      // Handle partial index conflict target error if PostgREST requires plain insert
       if (error && (error.code === '42P10' || error.message?.includes('ON CONFLICT'))) {
-        console.warn('[SYNC_WARN] Upsert conflict target error, attempting plain insert')
         const insertResult = await supabase
           .from('activity_events')
           .insert(records)

@@ -35,7 +35,6 @@ export async function GET() {
       )
     }
 
-    // Fetch comprehensive audit data
     const [orgsResult, membersResult, sessionsResult, entriesResult] = await Promise.all([
       supabase.from('organizations').select('id, name, slug, team_code, require_approval, created_at').order('name'),
       supabase.from('organization_members').select('id, organization_id, user_id, role, approval_status, created_at, organization:organizations(name), profile:profiles(email, full_name, username)'),
@@ -59,7 +58,6 @@ export async function GET() {
       right: { style: BorderStyle.SINGLE, size: 1, color: 'CCCCCC' },
     }
 
-    // Build Word Document
     const doc = new Document({
       sections: [
         {
@@ -88,7 +86,6 @@ export async function GET() {
             }),
             new Paragraph({ text: '' }),
 
-            // Executive Summary
             new Paragraph({
               text: '1. Executive Summary',
               heading: HeadingLevel.HEADING_1,
@@ -107,7 +104,6 @@ export async function GET() {
             }),
             new Paragraph({ text: '' }),
 
-            // Organizations Table
             new Paragraph({
               text: '2. Managed Organizations & Access Credentials',
               heading: HeadingLevel.HEADING_1,
@@ -143,7 +139,6 @@ export async function GET() {
             }),
             new Paragraph({ text: '' }),
 
-            // Members Table
             new Paragraph({
               text: '3. Team Member Directory & Approval Status',
               heading: HeadingLevel.HEADING_1,
@@ -177,7 +172,6 @@ export async function GET() {
             }),
             new Paragraph({ text: '' }),
 
-            // Recent Work Sessions Summary
             new Paragraph({
               text: '4. Recent Work Session Telemetry Summary',
               heading: HeadingLevel.HEADING_1,

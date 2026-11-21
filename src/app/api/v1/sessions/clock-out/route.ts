@@ -5,10 +5,6 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204 })
 }
 
-/** POST /api/v1/sessions/clock-out
- * Body: { session_id }
- * Ends the session and creates a time_entry record.
- */
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -38,7 +34,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: fetchError?.message || 'Session not found' }, { status: 404 })
     }
 
-    // Sum break durations: each break_start event paired with its following break_end event
     const { data: breakEvents } = await supabase
       .from('activity_events')
       .select('event_type, recorded_at')
