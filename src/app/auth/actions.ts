@@ -21,7 +21,6 @@ export async function login(formData: FormData) {
   const supabase = await createClient()
 
   try {
-    // If not an email format, resolve username to email via RPC or profile lookup
     if (!usernameOrEmail.includes('@')) {
       const { data: resolvedEmail, error: rpcErr } = await supabase.rpc(
         'get_email_by_username',
@@ -55,7 +54,6 @@ export async function login(formData: FormData) {
       return { error: authError?.message || 'Invalid username or password' }
     }
 
-    // Retroactive recovery for pre-approved managers whose organization membership was not transferred
     const adminClient = createAdminClient()
     if (adminClient) {
       const { data: currentMember } = await adminClient
@@ -65,7 +63,6 @@ export async function login(formData: FormData) {
         .maybeSingle()
 
       if (!currentMember) {
-        // Check if there is an unassociated organization membership matching this user's username or email
         const userEmail = authData.user.email
         const userMetadata = authData.user.user_metadata || {}
         const usernameVal = userMetadata.username || (userEmail ? userEmail.split('@')[0] : '')
@@ -99,7 +96,6 @@ export async function login(formData: FormData) {
       }
     }
 
-    // Role-based routing
     const { role } = await resolveUserSystemRole(supabase, authData.user)
 
     if (role === 'super_admin') {
@@ -110,7 +106,6 @@ export async function login(formData: FormData) {
       redirect('/install')
     }
   } catch (err: unknown) {
-    // Re-throw redirect so Next.js navigates properly
     if (
       err &&
       typeof err === 'object' &&
@@ -149,8 +144,6 @@ export async function register(formData: FormData) {
   const supabase = await createClient()
 
   try {
-    // 1. Detect if this user matches a pre-approved Manager profile slot
-    // Use admin client if available to bypass RLS during anonymous registration lookup
     const adminSupabase = createAdminClient() || supabase
     let managerQuery = adminSupabase
       .from('profiles')
@@ -167,15 +160,12 @@ export async function register(formData: FormData) {
     if (preapprovedError) {
       console.error('[REGISTER CHECK ERROR]', preapprovedError)
     }
-    console.log('[REGISTER CHECK]', { email, username: cleanUsername, slotFound: preapprovedSlots?.length })
 
     const preApprovedManager = preapprovedSlots && preapprovedSlots.length > 0 ? preapprovedSlots[0] : null
 
     if (preApprovedManager) {
       let newUserId: string
 
-      // Create user auth account with the manager's chosen password
-      // Use admin client if available to bypass rate limits and auto-confirm email
       if (adminSupabase?.auth?.admin) {
         const { data: adminUserData, error: adminUserError } =
           await adminSupabase.auth.admin.createUser({
@@ -220,7 +210,6 @@ export async function register(formData: FormData) {
         newUserId = signUpData.user.id
       }
 
-      // Fetch any existing organization membership for the pre-approved slot
       const { data: slotMemberships } = await adminSupabase
         .from('organization_members')
         .select('organization_id')
@@ -233,7 +222,6 @@ export async function register(formData: FormData) {
         (preApprovedManager as { organization_id?: string })?.organization_id ||
         null
 
-      // Claim the pre-approved profile slot
       const { error: claimErr } = await adminSupabase.rpc('claim_preapproved_manager', {
         p_preapproved_id: preApprovedManager.id,
         p_new_user_id: newUserId,
@@ -242,7 +230,6 @@ export async function register(formData: FormData) {
         p_username: cleanUsername || preApprovedManager.username,
       })
 
-      // Fallback in case RPC is not yet applied
       if (claimErr) {
         await adminSupabase.from('profiles').upsert(
           {
@@ -280,9 +267,7 @@ export async function register(formData: FormData) {
         }
       }
 
-      // Ensure organization_members record exists for new manager without creating duplicates
       if (slotOrgId) {
-        // Remove any stale or duplicate placeholder rows for this user in other orgs or conflicting slots
         await adminSupabase
           .from('organization_members')
           .delete()
@@ -299,14 +284,13 @@ export async function register(formData: FormData) {
           { onConflict: 'organization_id,user_id' }
         )
 
-        // Sync manager_id on organizations / teams if column exists
         try {
           await adminSupabase
             .from('organizations')
             .update({ manager_id: newUserId } as unknown as Record<string, unknown>)
             .eq('id', slotOrgId)
         } catch {
-          // Ignore if manager_id column does not exist on organizations
+          // Table or column optional
         }
 
         try {
@@ -315,11 +299,10 @@ export async function register(formData: FormData) {
             .update({ manager_id: newUserId } as unknown as Record<string, unknown>)
             .eq('id', slotOrgId)
         } catch {
-          // Ignore if teams table or manager_id column does not exist
+          // Table or column optional
         }
       }
 
-      // Automatically sign in the manager now that account is confirmed
       await supabase.auth.signInWithPassword({
         email,
         password,
@@ -328,7 +311,6 @@ export async function register(formData: FormData) {
       redirect('/dashboard')
     }
 
-    // 2. Joining with Team Code (Employee onboarding)
     if (!teamCode) {
       return { error: 'Please enter a Secret Team Code to join your team.' }
     }
@@ -336,7 +318,6 @@ export async function register(formData: FormData) {
     let orgId: string | null = null
     let requireApproval = true
 
-    // Verify team code
     const { data: orgData } = await supabase
       .from('organizations')
       .select('id, name, require_approval')
@@ -362,7 +343,6 @@ export async function register(formData: FormData) {
 
     const initialStatus = requireApproval ? 'pending' : 'approved'
 
-    // Create user
     const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
@@ -382,7 +362,6 @@ export async function register(formData: FormData) {
 
     const userId = signUpData.user.id
 
-    // Link user to organization
     const { error: joinRpcError } = await supabase.rpc('join_org_by_team_code', {
       p_user_id: userId,
       p_team_code: teamCode,

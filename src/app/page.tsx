@@ -14,7 +14,6 @@ import {
 export default function HomePage() {
   return (
     <div className="flex flex-col min-h-screen bg-background text-foreground">
-      {/* Navigation Header */}
       <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5">
@@ -49,7 +48,6 @@ export default function HomePage() {
         </div>
       </header>
 
-      {/* Hero Section */}
       <section className="relative overflow-hidden pt-20 pb-16 md:pt-28 md:pb-24 border-b">
         <div className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(120,119,198,0.15),rgba(255,255,255,0))]" />
         <div className="max-w-5xl mx-auto px-6 text-center space-y-8">
@@ -85,7 +83,6 @@ export default function HomePage() {
             </Link>
           </div>
 
-          {/* Interactive Mockup / Live Preview Card */}
           <div className="pt-10 max-w-3xl mx-auto">
             <div className="rounded-xl border bg-card p-6 shadow-2xl space-y-4 text-left">
               <div className="flex items-center justify-between border-b pb-4">
@@ -116,7 +113,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* 3-Step Getting Started Section */}
       <section id="how-it-works" className="py-20 md:py-28 bg-muted/20 border-b">
         <div className="max-w-6xl mx-auto px-6 space-y-14">
           <div className="text-center space-y-4">
@@ -129,7 +125,6 @@ export default function HomePage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {/* Step 1 */}
             <Card className="relative border-border/60 shadow-sm transition-all hover:shadow-md">
               <CardContent className="pt-6 space-y-4">
                 <div className="h-12 w-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold text-lg">
@@ -147,7 +142,6 @@ export default function HomePage() {
               </CardContent>
             </Card>
 
-            {/* Step 2 */}
             <Card className="relative border-border/60 shadow-sm transition-all hover:shadow-md">
               <CardContent className="pt-6 space-y-4">
                 <div className="h-12 w-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold text-lg">
@@ -165,7 +159,6 @@ export default function HomePage() {
               </CardContent>
             </Card>
 
-            {/* Step 3 */}
             <Card className="relative border-border/60 shadow-sm transition-all hover:shadow-md">
               <CardContent className="pt-6 space-y-4">
                 <div className="h-12 w-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold text-lg">
@@ -186,7 +179,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Feature Highlights Section */}
       <section id="features" className="py-20 md:py-28">
         <div className="max-w-6xl mx-auto px-6 space-y-14">
           <div className="text-center space-y-4">
@@ -232,7 +224,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Footer */}
       <footer className="border-t py-10 bg-muted/30">
         <div className="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
           <div className="flex items-center gap-2">

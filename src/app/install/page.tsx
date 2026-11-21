@@ -11,7 +11,6 @@ export default async function InstallPage(props: {
 
   return (
     <div className="flex flex-col min-h-screen bg-muted/20">
-      {/* Top bar */}
       <header className="border-b bg-background/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
@@ -59,9 +58,7 @@ export default async function InstallPage(props: {
           </p>
         </div>
 
-        {/* Browser Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Google Chrome */}
           <Card className="border-border/60 shadow-sm flex flex-col justify-between hover:border-primary/50 transition-colors">
             <CardHeader className="space-y-2">
               <div className="h-10 w-10 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold">
@@ -91,7 +88,6 @@ export default async function InstallPage(props: {
             </CardContent>
           </Card>
 
-          {/* Mozilla Firefox */}
           <Card className="border-border/60 shadow-sm flex flex-col justify-between hover:border-primary/50 transition-colors">
             <CardHeader className="space-y-2">
               <div className="h-10 w-10 rounded-lg bg-orange-500/10 text-orange-600 dark:text-orange-400 flex items-center justify-center font-bold">
@@ -118,7 +114,6 @@ export default async function InstallPage(props: {
             </CardContent>
           </Card>
 
-          {/* Brave Browser */}
           <Card className="border-border/60 shadow-sm flex flex-col justify-between hover:border-primary/50 transition-colors">
             <CardHeader className="space-y-2">
               <div className="h-10 w-10 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold">
@@ -149,7 +144,6 @@ export default async function InstallPage(props: {
           </Card>
         </div>
 
-        {/* Quick Links */}
         <div className="p-6 rounded-xl border bg-card flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="space-y-1 text-center sm:text-left">
             <p className="font-semibold text-sm">Need to register your employee account?</p>

@@ -18,7 +18,6 @@ export default async function JoinPage({ params }: JoinPageProps) {
   const { data: verifiedOrgs } = await supabase.rpc('verify_team_code', { p_team_code: cleanCode })
   const verifiedOrg = Array.isArray(verifiedOrgs) && verifiedOrgs.length > 0 ? verifiedOrgs[0] : null
 
-  // Fetch org details for display (require_approval, slug) only after the code is verified
   const { data: org } = verifiedOrg
     ? await supabase
         .from('organizations')
