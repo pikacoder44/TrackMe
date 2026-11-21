@@ -101,15 +101,11 @@ export function AdminDashboardClient({
   teams,
   candidateManagers,
 }: AdminDashboardClientProps) {
-  // Accordion open/close state per team id
   const [openTeamIds, setOpenTeamIds] = useState<Record<string, boolean>>({});
-
-  // Local notification state to instantly reflect cool-downs without page refresh
   const [localNotified, setLocalNotified] = useState<Record<string, boolean>>(
     {},
   );
 
-  // Modal state
   const [showNewTeamModal, setShowNewTeamModal] = useState(false);
   const [showAddManagerModal, setShowAddManagerModal] = useState(false);
   const [mgrFullName, setMgrFullName] = useState("");
@@ -127,7 +123,6 @@ export function AdminDashboardClient({
   } | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  // Toggle accordion card
   const toggleAccordion = (teamId: string) => {
     setOpenTeamIds((prev) => ({
       ...prev,
@@ -135,7 +130,6 @@ export function AdminDashboardClient({
     }));
   };
 
-  // Copy team join link
   const handleCopyLink = (code: string) => {
     if (!code) return;
     const link = `${window.location.origin}/join/${code}`;
@@ -144,7 +138,6 @@ export function AdminDashboardClient({
     setTimeout(() => setCopiedCode(null), 2500);
   };
 
-  // Handle Create Team
   const handleCreateTeamSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setMessage(null);
@@ -173,7 +166,6 @@ export function AdminDashboardClient({
     setMgrEmail("");
   };
 
-  // Handle Add / Provision Manager Slot
   const handleCreateManagerSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setMessage(null);
@@ -206,7 +198,6 @@ export function AdminDashboardClient({
     });
   };
 
-  // Handle Notify Manager (24h cooldown)
   const handleNotifyManager = (
     managerId: string,
     orgId: string,
@@ -227,7 +218,6 @@ export function AdminDashboardClient({
     });
   };
 
-  // Handle Assign Manager to Team
   const handleAssignManagerSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!assigningTeam) return;
@@ -253,7 +243,6 @@ export function AdminDashboardClient({
 
   return (
     <div className="space-y-6">
-      {/* Toast banner */}
       {message && (
         <div
           className={`p-4 rounded-xl border text-xs font-medium flex items-center justify-between shadow-sm animate-in fade-in ${
@@ -279,7 +268,6 @@ export function AdminDashboardClient({
         </div>
       )}
 
-      {/* Header bar with + Add Manager and + New Team Buttons */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b">
         <div className="space-y-1">
           <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">
@@ -314,7 +302,6 @@ export function AdminDashboardClient({
         </div>
       </div>
 
-      {/* Interactive Accordion Team Roster */}
       <div className="space-y-3">
         {teams.map((team) => {
           const isOpen = Boolean(openTeamIds[team.id]);
@@ -329,7 +316,6 @@ export function AdminDashboardClient({
               className="border-border/60 shadow-sm transition-all duration-200 overflow-hidden"
               style={{ borderLeftWidth: "4px", borderLeftColor: team.color }}
             >
-              {/* Collapsible Header */}
               <div
                 onClick={() => toggleAccordion(team.id)}
                 className="p-4 flex items-center justify-between cursor-pointer hover:bg-muted/30 transition-colors select-none"
@@ -369,7 +355,6 @@ export function AdminDashboardClient({
                 </div>
 
                 <div className="flex items-center gap-3 shrink-0">
-                  {/* Team Code Copy Button */}
                   {team.teamCode && (
                     <button
                       type="button"
@@ -391,7 +376,6 @@ export function AdminDashboardClient({
                     </button>
                   )}
 
-                  {/* Member count pill */}
                   <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-muted text-muted-foreground border">
                     {(team.manager ? 1 : 0) + team.members.length}{" "}
                     {(team.manager ? 1 : 0) + team.members.length === 1
@@ -399,7 +383,6 @@ export function AdminDashboardClient({
                       : "members"}
                   </span>
 
-                  {/* Accordion Chevron */}
                   <div className="text-muted-foreground">
                     {isOpen ? (
                       <ChevronUp className="w-5 h-5" />
@@ -410,10 +393,8 @@ export function AdminDashboardClient({
                 </div>
               </div>
 
-              {/* Accordion Content */}
               {isOpen && (
                 <CardContent className="p-4 pt-2 border-t border-border/40 space-y-4 bg-muted/10 animate-in fade-in duration-200">
-                  {/* 1. Manager Card */}
                   {team.manager ? (
                     <div className="p-4 rounded-xl border border-emerald-500/25 bg-emerald-500/10 text-emerald-950 dark:text-emerald-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
                       <div className="space-y-1">
@@ -450,7 +431,6 @@ export function AdminDashboardClient({
                         </div>
                       </div>
 
-                      {/* Manager Action: Download Report OR Notify Button */}
                       <div className="flex items-center gap-2 shrink-0">
                         {team.manager.hasUploadedToday &&
                         team.manager.todayReport ? (
@@ -502,7 +482,6 @@ export function AdminDashboardClient({
                       </div>
                     </div>
                   ) : (
-                    /* Clean Empty Manager Card */
                     <div className="p-4 rounded-xl border border-dashed border-border/80 bg-muted/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
@@ -529,7 +508,6 @@ export function AdminDashboardClient({
                     </div>
                   )}
 
-                  {/* 2. Team Members List (Distinct secondary color styling) */}
                   <div className="p-4 rounded-xl border border-border/80 bg-muted/40 space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
@@ -610,7 +588,6 @@ export function AdminDashboardClient({
         )}
       </div>
 
-      {/* Modal: + New Team */}
       {showNewTeamModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in"
@@ -628,7 +605,6 @@ export function AdminDashboardClient({
             </CardHeader>
             <form onSubmit={handleCreateTeamSubmit}>
               <CardContent className="space-y-4 text-xs">
-                {/* 1. Team Name */}
                 <div className="space-y-1">
                   <label
                     htmlFor="teamName"
@@ -645,7 +621,6 @@ export function AdminDashboardClient({
                   />
                 </div>
 
-                {/* 2. Team Color Accent */}
                 <div className="space-y-2">
                   <label className="font-semibold text-muted-foreground flex items-center justify-between">
                     <span>Color Accent</span>
@@ -682,7 +657,6 @@ export function AdminDashboardClient({
                   </div>
                 </div>
 
-                {/* 3. Strict Manager Selection */}
                 <div className="space-y-1">
                   <label
                     htmlFor="managerSelect"
@@ -735,7 +709,6 @@ export function AdminDashboardClient({
         </div>
       )}
 
-      {/* Modal: + Add Manager */}
       {showAddManagerModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in"
@@ -757,7 +730,6 @@ export function AdminDashboardClient({
             </CardHeader>
             <form onSubmit={handleCreateManagerSubmit}>
               <CardContent className="space-y-4 text-xs">
-                {/* 1. Full Name */}
                 <div className="space-y-1">
                   <label
                     htmlFor="mgrFullName"
@@ -777,7 +749,6 @@ export function AdminDashboardClient({
                   />
                 </div>
 
-                {/* 2. Username / Email */}
                 <div className="space-y-1">
                   <label
                     htmlFor="mgrIdentifier"
@@ -825,7 +796,6 @@ export function AdminDashboardClient({
         </div>
       )}
 
-      {/* Modal: + Assign Manager */}
       {assigningTeam && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in"

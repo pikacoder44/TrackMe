@@ -67,7 +67,6 @@ export default async function AdminDashboardPage() {
   // eslint-disable-next-line react-hooks/purity
   const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 
-  // Fetch organizations, members, today's reports, notifications, candidate managers, and profiles
   const [orgsResult, membersResult, reportsResult, noticesResult, candidateManagers, profilesResult] = await Promise.all([
     db
       .from('organizations')
@@ -97,13 +96,11 @@ export default async function AdminDashboardPage() {
   const rawNotices = (noticesResult.data as NotificationRecord[]) || []
   const rawProfiles = (profilesResult.data as ProfileData[]) || []
 
-  // Build a lookup map of profiles by user_id to match members without requiring an inner join on auth.users
   const profilesMap = new Map<string, ProfileData>()
   rawProfiles.forEach((p) => {
     profilesMap.set(p.id, p)
   })
 
-  // Supplement map with candidate managers
   candidateManagers.forEach((c) => {
     if (!profilesMap.has(c.id)) {
       profilesMap.set(c.id, {
@@ -118,23 +115,14 @@ export default async function AdminDashboardPage() {
     }
   })
 
-  // Transform data for the interactive accordion
   const teams = rawOrgs.map((org) => {
     const orgMembers = rawMembers.filter((m) => m.organization_id === org.id)
-
-    // Exclude platform roles from team roster counting
     const isExcludedRole = (r: string) => r === 'super_admin' || r === 'owner'
 
-    // Find primary manager for this team (strictly excluding super_admin and owner)
-    // Exclude placeholder seed accounts (like manager@acme.com) when active registered managers exist
     const managerMembers = orgMembers.filter(
       (m) => !isExcludedRole(m.role) && (m.role === 'manager' || m.role === 'admin')
     )
 
-    // Sort manager members so that:
-    // 1. Non-placeholder active accounts come before placeholder accounts (manager@acme.com)
-    // 2. Completed signups (!is_pending_signup) come before pending signups
-    // 3. Most recently updated/created accounts come first
     const isPlaceholderEmail = (email?: string) =>
       email?.toLowerCase() === 'manager@acme.com' || email?.toLowerCase().startsWith('placeholder')
 
@@ -163,7 +151,6 @@ export default async function AdminDashboardPage() {
       const matchedProfile = profilesMap.get(mgrId) || managerMember.profile || null
 
       if (matchedProfile) {
-        // Find today's daily report by organization_id or by manager_id
         const orgManagerIds = new Set(managerMembers.map((m) => m.user_id))
         const todayReport =
           rawReports.find(
@@ -212,7 +199,6 @@ export default async function AdminDashboardPage() {
         }
       })
 
-    // Total members = 1 manager (if assigned) + employee count (strictly excluding super_admin and owner)
     const managerCount = managerInfo ? 1 : 0
     const totalCount = managerCount + employeeMembers.length
 

@@ -33,7 +33,6 @@ export default async function AdminLayout({
 
   return (
     <div className="flex min-h-screen flex-col bg-muted/20">
-      {/* Top Super Admin Navigation Bar */}
       <header className="border-b bg-background/95 backdrop-blur sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -72,7 +71,6 @@ export default async function AdminLayout({
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="flex-1 w-full max-w-7xl mx-auto px-6 py-8">
         {children}
       </main>

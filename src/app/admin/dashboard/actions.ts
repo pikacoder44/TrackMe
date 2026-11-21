@@ -56,7 +56,6 @@ export async function provisionManagerSlotAction(formData: FormData) {
       return { error: 'Invalid username format.' }
     }
 
-    // Try RPC provision_manager_slot first (defined in migration 00008)
     try {
       const { data: rpcData, error: rpcError } = await db.rpc('provision_manager_slot', {
         p_full_name: fullName,
@@ -79,10 +78,9 @@ export async function provisionManagerSlotAction(formData: FormData) {
         }
       }
     } catch {
-      // Fall through to direct table operations
+      // Fall through to table write
     }
 
-    // Direct table operation using admin client or authenticated super admin client
     const { data: existing } = await db
       .from('profiles')
       .select('id, email, username, role, full_name')
@@ -116,7 +114,6 @@ export async function provisionManagerSlotAction(formData: FormData) {
       }
     }
 
-    // Insert pre-approved profile slot
     const { data: newProfile, error: insertError } = await db
       .from('profiles')
       .insert({
@@ -198,11 +195,9 @@ export async function createTeamAction(formData: FormData) {
     const adminClient = createAdminClient()
     const db = adminClient || supabase
 
-    // Generate random 4-digit team code
     const teamCode = `TRACK-${Math.floor(1000 + Math.random() * 9000)}`
     const slug = teamName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
 
-    // 1. Create Organization with color accent
     const { data: newOrg, error: orgError } = await db
       .from('organizations')
       .insert({
@@ -219,9 +214,6 @@ export async function createTeamAction(formData: FormData) {
       return { error: orgError.message }
     }
 
-    // 2. Resolve manager in public.profiles (where id = managerId or username/email matches)
-    // Allows assignment if profile exists with role = 'manager' or approval_status = 'approved',
-    // regardless of whether an auth.users record exists yet.
     if (rawManager && rawManager !== 'none' && newOrg) {
       const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawManager)
 
@@ -237,7 +229,6 @@ export async function createTeamAction(formData: FormData) {
       const { data: managerProfile } = await query.maybeSingle()
 
       if (managerProfile) {
-        // Upsert into organization_members using managerId from public.profiles
         await db.from('organization_members').upsert(
           {
             organization_id: newOrg.id,
@@ -248,7 +239,6 @@ export async function createTeamAction(formData: FormData) {
           { onConflict: 'organization_id,user_id' }
         )
 
-        // Ensure profile role is manager and approved
         await db
           .from('profiles')
           .update({ role: 'manager', approval_status: 'approved' })
@@ -274,7 +264,6 @@ export async function notifyManagerAction(managerId: string, organizationId: str
     const adminClient = createAdminClient()
     const db = adminClient || supabase
 
-    // Check if manager was notified in the last 24 hours
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 
     const { data: recentNotice } = await db
@@ -297,7 +286,6 @@ export async function notifyManagerAction(managerId: string, organizationId: str
       }
     }
 
-    // Record notification log
     const { error: insertError } = await db
       .from('manager_notifications')
       .insert({
@@ -332,10 +320,6 @@ export async function assignManagerToTeamAction(teamId: string, managerUsername:
 
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanIdentifier)
 
-    // 1. Manager Profile Verification:
-    // Check public.profiles (where id = managerId or username/email matches)
-    // Allow assignment if profile exists with role = 'manager' or approval_status = 'approved',
-    // regardless of whether an auth.users record exists yet.
     let query = db
       .from('profiles')
       .select('id, username, email, role, approval_status')
@@ -351,9 +335,6 @@ export async function assignManagerToTeamAction(teamId: string, managerUsername:
       return { error: `Profile "${managerUsername}" not found. Please verify the selection.` }
     }
 
-    // 2. Organization Member Upsert:
-    // Insert/upsert into public.organization_members using managerId from public.profiles
-    // setting role: 'manager' and approval_status: 'approved'
     const { error: upsertError } = await db.from('organization_members').upsert(
       {
         organization_id: teamId,
@@ -373,7 +354,6 @@ export async function assignManagerToTeamAction(teamId: string, managerUsername:
       .update({ role: 'manager', approval_status: 'approved' })
       .eq('id', managerProfile.id)
 
-    // 3. Revalidation: Call revalidatePath for both 'page' and 'layout'
     revalidatePath('/admin/dashboard', 'page')
     revalidatePath('/admin/dashboard', 'layout')
     return { success: true, message: 'Manager assigned successfully.' }
