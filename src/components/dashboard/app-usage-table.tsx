@@ -116,7 +116,6 @@ export function AppUsageTable({
             <CardTitle className="text-base">App &amp; Website Usage</CardTitle>
             <CardDescription>Real-time activity breakdown for this session</CardDescription>
           </div>
-          {/* Tab toggle */}
           <div className="flex gap-1 p-0.5 bg-muted rounded-lg text-sm">
             {(['overview', 'chart'] as const).map((t) => (
               <button
@@ -133,7 +132,6 @@ export function AppUsageTable({
           </div>
         </div>
 
-        {/* Summary metrics */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
           {[
             {
@@ -175,7 +173,6 @@ export function AppUsageTable({
       </CardHeader>
 
       <CardContent className="pt-0 space-y-4">
-        {/* Productivity filter pills */}
         <div className="flex flex-wrap gap-1.5">
           {filters.map((f) => (
             <button
@@ -193,7 +190,6 @@ export function AppUsageTable({
           ))}
         </div>
 
-        {/* Overview tab — table */}
         {tab === 'overview' && (
           <>
             {filtered.length === 0 ? (
@@ -277,7 +273,6 @@ export function AppUsageTable({
           </>
         )}
 
-        {/* Chart tab */}
         {tab === 'chart' && (
           <div className="h-56">
             {chartData.length === 0 ? (

@@ -43,7 +43,6 @@ export function TimeTracker({
     (_current, update: ActiveSession | null) => update
   )
 
-  // Supabase Realtime: refresh when own work_session changes
   useEffect(() => {
     const supabase = createClient()
     const channel = supabase
@@ -65,7 +64,6 @@ export function TimeTracker({
     }
   }, [organizationId, router])
 
-  // Timer
   useEffect(() => {
     if (!currentSession) {
       setTimeout(() => setElapsedSeconds(0), 0)

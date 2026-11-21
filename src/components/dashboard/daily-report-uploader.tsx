@@ -119,7 +119,6 @@ export function DailyReportUploader({
           </div>
         )}
 
-        {/* Existing Report Download Banner if present */}
         {uploadedReport && (
           <div className="p-3 rounded-lg border bg-muted/40 flex items-center justify-between text-xs">
             <div className="flex items-center gap-2 truncate">
@@ -147,7 +146,6 @@ export function DailyReportUploader({
           </div>
         )}
 
-        {/* Upload Form */}
         <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           <div className="flex-1">
             <input

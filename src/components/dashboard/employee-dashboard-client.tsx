@@ -45,7 +45,6 @@ export function EmployeeDashboardClient({
 }: EmployeeDashboardClientProps) {
   const router = useRouter()
 
-  // Supabase Realtime: refresh dashboard when new telemetry events arrive from extension
   useEffect(() => {
     const supabase = createClient()
     const channel = supabase
