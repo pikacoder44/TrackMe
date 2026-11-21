@@ -27,7 +27,6 @@ export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname
   const isApi = pathname.startsWith('/api/')
 
-  // Handle CORS for API routes
   if (isApi) {
     const corsHeaders = getCorsHeaders(request.headers.get('origin'))
 
@@ -45,21 +44,18 @@ export async function proxy(request: NextRequest) {
     return response
   }
 
-  // Consolidate legacy /signup into /register
   if (pathname === '/signup') {
     return NextResponse.redirect(new URL('/register', request.url))
   }
 
   const { supabaseResponse, supabase, user } = await createMiddlewareClient(request)
 
-  // Redirect logged-in users visiting /login or /register to their designated role portal
   if (user && (pathname === '/login' || pathname === '/register')) {
     const { role } = await resolveUserSystemRole(supabase, user)
     const destination = getRoleHome(role)
     return NextResponse.redirect(new URL(destination, request.url))
   }
 
-  // Super Admin Portal RBAC: /admin or /admin/* restricted strictly to super_admin
   if (pathname.startsWith('/admin')) {
     if (!user) {
       return NextResponse.redirect(new URL('/login', request.url))
@@ -72,7 +68,6 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  // Manager / Employee Portal: /dashboard access
   if (pathname.startsWith('/dashboard')) {
     if (!user) {
       return NextResponse.redirect(new URL('/login', request.url))

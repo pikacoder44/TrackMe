@@ -1,7 +1,3 @@
-/**
- * Telemetry and Domain classification logic shared between Extension and Supervisory Hub.
- */
-
 export interface TelemetryTick {
   idempotency_key: string
   timestamp: string
@@ -40,9 +36,6 @@ const DOMAIN_MAP: Record<string, string> = {
   '127.0.0.1': 'Localhost / Dev Server',
 }
 
-/**
- * Extracts normalized hostname or domain from URL string.
- */
 export function extractDomain(url?: string): string {
   if (!url) return ''
   try {
@@ -56,9 +49,6 @@ export function extractDomain(url?: string): string {
   }
 }
 
-/**
- * Derives human-friendly application name from URL and window title.
- */
 export function deriveAppName(url?: string, title?: string): string {
   const domain = extractDomain(url)
 
@@ -88,9 +78,6 @@ export function deriveAppName(url?: string, title?: string): string {
   return 'Web Browser'
 }
 
-/**
- * Categorizes an idle state into event_type and boolean active flag.
- */
 export function categorizeIdleState(state: 'active' | 'idle' | 'locked'): {
   isActive: boolean
   eventType: 'active_tick' | 'idle_tick'
@@ -102,9 +89,6 @@ export function categorizeIdleState(state: 'active' | 'idle' | 'locked'): {
   }
 }
 
-/**
- * Batch slices a queue up to batchSize items.
- */
 export function prepareSyncBatch<T>(queue: T[], batchSize = 50): {
   batch: T[]
   remaining: T[]
@@ -126,9 +110,6 @@ export interface AggregatedAppUsage {
   seconds: number
 }
 
-/**
- * Classifies an application name into category and productivity status.
- */
 export function getAppProductivity(appName: string): {
   category: string
   productivity: ProductivityRating
@@ -168,10 +149,6 @@ export function getAppProductivity(appName: string): {
   return { category: 'General', productivity: 'Neutral' }
 }
 
-/**
- * Formats duration in seconds into clean HH:MM:SS format
- * (e.g. 15s -> "00:00:15", 90s -> "00:01:30", 3720s -> "01:02:00")
- */
 export function formatDurationHHMMSS(seconds: number): string {
   const safeSec = Math.max(0, Math.floor(seconds))
   const h = Math.floor(safeSec / 3600)
@@ -181,15 +158,6 @@ export function formatDurationHHMMSS(seconds: number): string {
   return `${pad(h)}:${pad(m)}:${pad(s)}`
 }
 
-/**
- * Aggregates raw activity events into structured app usage entries.
- * Calculates activity percentage from the ratio of active vs idle ticks:
- * - total_ticks = active_ticks + idle_ticks
- * - activity_pct = total_ticks > 0 ? Math.round((active_ticks / total_ticks) * 100) : 0
- * - inactive_pct = 100 - activity_pct
- * When total time spent on a site is extremely small (<= 1 tick / 15 seconds),
- * short visits are represented accurately (capped at 50%) rather than a misleading solid 100% bar.
- */
 export function aggregateEventsToAppUsage(
   events: { app_name: string | null; event_type: string }[],
   tickSeconds = 15

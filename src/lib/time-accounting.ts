@@ -1,7 +1,3 @@
-/**
- * Core business logic helpers for time accounting, session transitions, and idempotency deduplication.
- */
-
 export interface SessionState {
   status: 'active' | 'paused' | 'completed'
   startedAt: string
@@ -11,9 +7,6 @@ export interface SessionState {
 
 export type SessionTransitionAction = 'pause' | 'resume' | 'complete'
 
-/**
- * Calculates duration in seconds between two UTC ISO timestamps.
- */
 export function calculateDurationInSeconds(startTimestamp: string, endTimestamp: string): number {
   const start = new Date(startTimestamp).getTime()
   const end = new Date(endTimestamp).getTime()
@@ -29,10 +22,6 @@ export function calculateDurationInSeconds(startTimestamp: string, endTimestamp:
   return Math.floor((end - start) / 1000)
 }
 
-/**
- * Transitions a session state strictly adhering to finite state machine rules:
- * active -> paused -> active -> completed
- */
 export function transitionSessionState(
   current: SessionState,
   action: SessionTransitionAction,
@@ -80,10 +69,6 @@ export interface ActivityEvent {
   payload?: Record<string, unknown>
 }
 
-/**
- * Deduplicates an array of incoming activity events using their idempotency_key.
- * Returns only the first instance of each idempotency key in preserving order.
- */
 export function deduplicateEvents(events: ActivityEvent[]): ActivityEvent[] {
   const seen = new Set<string>()
   const deduplicated: ActivityEvent[] = []
